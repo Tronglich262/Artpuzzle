@@ -50,11 +50,8 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
         Vector2 delta = currentPointer - pointerStart;
 
-        // lock trục
-        if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
-            delta.y = 0;
-        else
-            delta.x = 0;
+        // BỎ LOCK TRỤC - cho phép kéo tự do mọi hướng (kể cả chéo)
+        // delta.x và delta.y giữ nguyên không ép về 0
 
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
         rootRect.anchoredPosition = rootStartPos + delta;
