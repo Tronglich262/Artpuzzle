@@ -21,12 +21,4 @@ public class Block : MonoBehaviour
         rt.sizeDelta = new Vector2(blockSize, blockSize);
         rt.anchoredPosition = targetPosition;
     }
-
-    public void PlaySelect()
-    {
-        if (animator != null)
-        {
-            animator.SetTrigger("Selected");
-        }
-    }
 }

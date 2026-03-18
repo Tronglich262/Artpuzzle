@@ -1,151 +1,119 @@
-    using UnityEngine;
-    using UnityEngine.UI;
-    using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using System.Collections.Generic;
+using System.Linq;
 
-    public class PuzzleManager : MonoBehaviour
+public class PuzzleManager : MonoBehaviour
+{
+    public Sprite sourceImage;
+    public GameObject blockPrefab;
+
+    public int rows = 3;
+    public int cols = 3;
+    public float blockSize = 100f;
+
+    [HideInInspector]
+    public List<Block> currentBlocks = new List<Block>();
+
+    void Start()
     {
-        public Sprite sourceImage;
-        public GameObject blockPrefab;
+        GeneratePuzzle();
+        ShuffleBlocks();
+    }
 
-        public int rows = 3;
-        public int cols = 3;
-        public float blockSize = 100f;
+    public void GeneratePuzzle()
+    {
+        // Xóa block cũ
+        foreach (Transform child in transform) Destroy(child.gameObject);
+        currentBlocks.Clear();
 
-        [HideInInspector]
-        public List<Block> currentBlocks = new List<Block>();
+        // Tính toán offset để căn giữa puzzle
+        float startX = -((cols - 1) * blockSize) / 2f;
+        float startY = ((rows - 1) * blockSize) / 2f;
 
-        void Start()
+        for (int r = 0; r < rows; r++)
         {
-            GeneratePuzzle();
-            ShuffleBlocks();
-        }
-
-        void ClearAllBlocks()
-        {
-            foreach (var b in currentBlocks)
-                if (b != null) Destroy(b.gameObject);
-
-            currentBlocks.Clear();
-        }
-
-        public void GeneratePuzzle()
-        {
-            ClearAllBlocks();
-
-            float startX = -((cols - 1) * blockSize) / 2f;
-            float startY = ((rows - 1) * blockSize) / 2f;
-
-            for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
             {
-                for (int c = 0; c < cols; c++)
-                {
-                    Vector2 pos = new Vector2(startX + c * blockSize, startY - r * blockSize);
-                    CreateBlock(r, c, pos);
-                }
+                GameObject obj = Instantiate(blockPrefab, transform);
+                Block b = obj.GetComponent<Block>();
+
+                // Thiết lập tọa độ
+                b.gridPos = new Vector2Int(r, c);
+                b.correctPos = new Vector2Int(r, c);
+                
+                // Cắt ảnh
+                SetupBlockVisual(obj, r, c);
+                
+                currentBlocks.Add(b);
+
+                // Khởi tạo group riêng cho mỗi block
+                BlockGroup g = new BlockGroup();
+                g.blocks.Add(b);
+                b.group = g;
             }
         }
+        UpdateAllBlockPositions();
+    }
 
-        void CreateBlock(int row, int col, Vector2 pos)
-        {
-            GameObject obj = Instantiate(blockPrefab, transform);
+    void SetupBlockVisual(GameObject obj, int row, int col)
+    {
+        int texW = sourceImage.texture.width;
+        int texH = sourceImage.texture.height;
+        int spriteW = texW / cols;
+        int spriteH = texH / rows;
 
-            Block b = obj.GetComponent<Block>();
+        Rect rect = new Rect(col * spriteW, texH - (row + 1) * spriteH, spriteW, spriteH);
+        obj.GetComponent<Image>().sprite = Sprite.Create(sourceImage.texture, rect, new Vector2(0.5f, 0.5f));
+    }
 
-            b.gridPos = new Vector2Int(row, col);
-            b.correctPos = new Vector2Int(row, col);
-            b.targetPosition = pos;
-            b.UpdateTransform(blockSize);
-
-            currentBlocks.Add(b);
-
-            //  mỗi block là 1 group riêng
-            BlockGroup g = new BlockGroup();
-            g.Add(b);
-
-            // cắt ảnh
-            int spriteW = sourceImage.texture.width / cols;
-            int spriteH = sourceImage.texture.height / rows;
-
-            Rect rect = new Rect(
-                col * spriteW,
-                sourceImage.texture.height - (row + 1) * spriteH,
-                spriteW,
-                spriteH
-            );
-
-            Sprite s = Sprite.Create(sourceImage.texture, rect, new Vector2(0.5f, 0.5f));
-            obj.GetComponent<Image>().sprite = s;
-        }
-
-        public Vector2 GridToPosition(Vector2Int gridPos)
-        {
-            float startX = -((cols - 1) * blockSize) / 2f;
-            float startY = ((rows - 1) * blockSize) / 2f;
-
-            return new Vector2(
-                startX + gridPos.y * blockSize,
-                startY - gridPos.x * blockSize
-            );
-        }
-
-        // =========================
-        // SWAP GROUP
-        // =========================
-        public void SwapBlocks(Block a, Block b)
+    // --- LOGIC SWAP NHÓM ---
+    public void SwapBlocks(Block a, Block b)
 {
-    if (a == null || b == null) return;
+    if (a == null || b == null || a.group == b.group) return;
 
     BlockGroup groupA = a.group;
     BlockGroup groupB = b.group;
 
-    if (groupA == groupB) return;
+    Vector2Int shift = b.gridPos - a.gridPos;
 
-    if (groupA.blocks.Count != groupB.blocks.Count) return;
-
-    // lấy origin
-    Vector2Int originA = groupA.blocks[0].gridPos;
-    Vector2Int originB = groupB.blocks[0].gridPos;
-
-    // lưu pos cũ
-    Dictionary<Block, Vector2Int> oldPosA = new Dictionary<Block, Vector2Int>();
-    Dictionary<Block, Vector2Int> oldPosB = new Dictionary<Block, Vector2Int>();
-
-    foreach (var bl in groupA.blocks)
-        oldPosA[bl] = bl.gridPos;
-
-    foreach (var bl in groupB.blocks)
-        oldPosB[bl] = bl.gridPos;
-
-    // move group A -> B
-    foreach (var bl in groupA.blocks)
+    // --- BỔ SUNG: KIỂM TRA GIỚI HẠN LƯỚI ---
+    if (!CanMoveGroup(groupA, shift) || !CanMoveGroup(groupB, -shift)) 
     {
-        Vector2Int offset = oldPosA[bl] - originA;
-        Vector2Int newPos = originB + offset;
-
-        bl.gridPos = newPos;
-        bl.targetPosition = GridToPosition(newPos);
-        bl.UpdateTransform(blockSize);
+        ResetGroupPosition(groupA);
+        ResetGroupPosition(groupB);
+        return; 
     }
 
-    // move group B -> A
-    foreach (var bl in groupB.blocks)
-    {
-        Vector2Int offset = oldPosB[bl] - originB;
-        Vector2Int newPos = originA + offset;
+    foreach (Block blk in groupA.blocks) blk.gridPos += shift;
+    foreach (Block blk in groupB.blocks) blk.gridPos -= shift;
 
-        bl.gridPos = newPos;
-        bl.targetPosition = GridToPosition(newPos);
-        bl.UpdateTransform(blockSize);
-    }
-
-    RecheckAllGroups();
+    UpdateAllBlockPositions();
+    CheckAndMergeGroups();
 }
 
-        // =========================
-        //  MERGE GROUP
-        // =========================
-        void RecheckAllGroups()
+bool CanMoveGroup(BlockGroup g, Vector2Int shift)
+{
+    foreach (var b in g.blocks)
+    {
+        Vector2Int nextPos = b.gridPos + shift;
+        if (nextPos.x < 0 || nextPos.x >= rows || nextPos.y < 0 || nextPos.y >= cols)
+            return false;
+    }
+    return true;
+}
+
+void ResetGroupPosition(BlockGroup g)
+{
+    foreach (var b in g.blocks) b.UpdateTransform(blockSize);
+}
+
+    void CheckAndMergeGroups()
+    {
+        bool foundMerge = true;
+        while (foundMerge) // Lặp lại cho đến khi không còn cặp nào ghép được
         {
+            foundMerge = false;
             for (int i = 0; i < currentBlocks.Count; i++)
             {
                 for (int j = i + 1; j < currentBlocks.Count; j++)
@@ -153,48 +121,54 @@
                     Block a = currentBlocks[i];
                     Block b = currentBlocks[j];
 
-                    if (a.group == b.group) continue;
-
-                    if (IsCorrectNeighbor(a, b))
+                    if (a.group != b.group && IsCorrectNeighbor(a, b))
                     {
                         a.group.Merge(b.group);
+                        foundMerge = true;
+                        break; 
                     }
                 }
-            }
-        }
-
-        public bool IsCorrectNeighbor(Block a, Block b)
-        {
-            Vector2Int diff = a.gridPos - b.gridPos;
-
-            bool isNeighbor =
-                (Mathf.Abs(diff.x) == 1 && diff.y == 0) ||
-                (Mathf.Abs(diff.y) == 1 && diff.x == 0);
-
-            if (!isNeighbor) return false;
-
-            Vector2Int correctDiff = a.correctPos - b.correctPos;
-
-            return diff == correctDiff;
-        }
-
-        public void ShuffleBlocks()
-        {
-            List<Vector2Int> positions = new List<Vector2Int>();
-
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    positions.Add(new Vector2Int(r, c));
-
-            foreach (var b in currentBlocks)
-            {
-                int rand = Random.Range(0, positions.Count);
-
-                b.gridPos = positions[rand];
-                b.targetPosition = GridToPosition(b.gridPos);
-                b.UpdateTransform(blockSize);
-
-                positions.RemoveAt(rand);
+                if (foundMerge) break;
             }
         }
     }
+
+    public bool IsCorrectNeighbor(Block a, Block b)
+    {
+        Vector2Int gridDiff = a.gridPos - b.gridPos;
+        // Chỉ ghép nếu chúng đang nằm cạnh nhau trên lưới (khoảng cách = 1)
+        if (gridDiff.sqrMagnitude != 1) return false;
+
+        // Kiểm tra xem vị trí tương đối này có đúng với ảnh gốc không
+        Vector2Int correctDiff = a.correctPos - b.correctPos;
+        return gridDiff == correctDiff;
+    }
+
+    public void UpdateAllBlockPositions()
+    {
+        foreach (var b in currentBlocks)
+        {
+            b.targetPosition = GridToPosition(b.gridPos);
+            b.UpdateTransform(blockSize);
+        }
+    }
+
+    public Vector2 GridToPosition(Vector2Int pos)
+    {
+        float startX = -((cols - 1) * blockSize) / 2f;
+        float startY = ((rows - 1) * blockSize) / 2f;
+        return new Vector2(startX + pos.y * blockSize, startY - pos.x * blockSize);
+    }
+
+    public void ShuffleBlocks()
+    {
+        var positions = currentBlocks.Select(b => b.gridPos).ToList();
+        foreach (var b in currentBlocks)
+        {
+            int rnd = Random.Range(0, positions.Count);
+            b.gridPos = positions[rnd];
+            positions.RemoveAt(rnd);
+        }
+        UpdateAllBlockPositions();
+    }
+}
