@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 public class Block : MonoBehaviour
 {
-    public Image img; // kéo từ child vào
+    public Image img; 
 
     public Vector2Int gridPos;
     public Vector2Int correctPos;
