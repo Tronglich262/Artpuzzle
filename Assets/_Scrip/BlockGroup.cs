@@ -39,4 +39,32 @@ public class BlockGroup
             b.transform.localScale = Vector3.one;
         }
     }
+    public List<BlockGroup> SplitByBlocks(List<Block> blocksToExtract, Transform parent)
+    {
+        List<BlockGroup> newGroups = new List<BlockGroup>();
+
+        // 1. Tạo group mới cho phần bị tách
+        BlockGroup newGroup = new BlockGroup();
+
+        GameObject rootObj = new GameObject("SplitGroup", typeof(RectTransform));
+        RectTransform rt = rootObj.GetComponent<RectTransform>();
+        rt.SetParent(parent);
+        rt.localScale = Vector3.one;
+        rt.anchoredPosition = Vector2.zero;
+
+        newGroup.root = rootObj.transform;
+
+        foreach (var b in blocksToExtract)
+        {
+            b.group = newGroup;
+            b.transform.SetParent(newGroup.root, true);
+
+            newGroup.blocks.Add(b);
+            blocks.Remove(b);
+        }
+
+        newGroups.Add(newGroup);
+
+        return newGroups;
+    }
 }

@@ -521,61 +521,58 @@ public class PuzzleManager : MonoBehaviour
     {
         Dictionary<Block, Vector2Int> newPositions = new Dictionary<Block, Vector2Int>();
 
-        // 1. Default: giữ nguyên vị trí cũ
         foreach (var b in currentBlocks)
             newPositions[b] = b.gridPos;
 
-        // 2. Tính target của group kéo
-        List<Vector2Int> targetPositions = draggedGroup.blocks
-            .Select(b => b.gridPos + offset)
-            .ToList();
+        // 🔥 lưu block bị va chạm
+        List<Block> hitBlocks = new List<Block>();
 
-        var hitBlocks = GetBlocksAtPositions(targetPositions, draggedGroup);
-
-        // Không va chạm
-        if (hitBlocks.Count == 0)
-        {
-            foreach (var b in draggedGroup.blocks)
-                newPositions[b] = b.gridPos + offset;
-
-            // 👉 CHECK TRÙNG
-            if (HasDuplicatePositions(newPositions))
-                return false;
-
-            ApplyPositions(newPositions);
-            return true;
-        }
-
-        // 3. Lấy group bị ảnh hưởng
-        HashSet<BlockGroup> affectedGroups = new HashSet<BlockGroup>();
-        foreach (var hb in hitBlocks)
-        {
-            if (hb.group != draggedGroup)
-                affectedGroups.Add(hb.group);
-        }
-
-        // 4. Move thử
         foreach (var b in draggedGroup.blocks)
         {
-            newPositions[b] = b.gridPos + offset;
-        }
+            Vector2Int target = b.gridPos + offset;
 
-        foreach (var g in affectedGroups)
-        {
-            foreach (var b in g.blocks)
+            if (target.x < 0 || target.x >= rows || target.y < 0 || target.y >= cols)
+                return false;
+
+            Block other = currentBlocks.FirstOrDefault(x => x.gridPos == target && x != b);
+
+            if (other != null)
             {
-                newPositions[b] = b.gridPos - offset;
+                hitBlocks.Add(other);
+
+                // swap
+                newPositions[b] = target;
+                newPositions[other] = b.gridPos;
+            }
+            else
+            {
+                newPositions[b] = target;
             }
         }
 
-        // 🔥 QUAN TRỌNG NHẤT
+        // 🔥 CHECK TRÙNG
         if (HasDuplicatePositions(newPositions))
+            return false;
+
+        // ====================================
+        // 🔥 SPLIT GROUP TRƯỚC KHI APPLY
+        // ====================================
+        foreach (var hb in hitBlocks)
         {
-            return false; // ❌ có đè nhau → cancel
+            BlockGroup g = hb.group;
+
+            if (g.blocks.Count > 1)
+            {
+                // chỉ tách block bị đụng
+                g.SplitByBlocks(new List<Block> { hb }, this.transform);
+            }
         }
 
-        // 5. APPLY thật
+        // ====================================
+        // APPLY
+        // ====================================
         ApplyPositions(newPositions);
+
         return true;
     }
     bool HasDuplicatePositions(Dictionary<Block, Vector2Int> map)
