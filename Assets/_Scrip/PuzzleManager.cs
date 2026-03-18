@@ -56,7 +56,6 @@ public class PuzzleManager : MonoBehaviour
                 rt.localScale = Vector3.one;
                 rt.anchoredPosition = Vector2.zero;
                 rt.sizeDelta = Vector2.zero;
-                // ✅ trong PuzzleManager thì dùng this
                 g.root.SetParent(this.transform);
                 g.blocks.Add(b);
                 b.group = g;
@@ -519,92 +518,78 @@ public class PuzzleManager : MonoBehaviour
     /// </summary>
     public bool MoveGroupWithPush(BlockGroup draggedGroup, Vector2Int offset)
     {
-        Dictionary<Block, Vector2Int> newPositions = new Dictionary<Block, Vector2Int>();
+        // 1. Lưu trữ trạng thái giả định
+        Dictionary<Block, Vector2Int> finalPositions = new Dictionary<Block, Vector2Int>();
+        HashSet<Vector2Int> occupiedByMainGroup = new HashSet<Vector2Int>();
 
-        foreach (var b in currentBlocks)
-            newPositions[b] = b.gridPos;
-
-        List<(Block a, Block b)> swapPairs = new List<(Block, Block)>();
-        List<Block> freeMoveBlocks = new List<Block>();
-
-        // =====================================
-        // 1. PHÂN LOẠI BLOCK
-        // =====================================
+        // Tính vị trí mới cho group đang kéo
         foreach (var b in draggedGroup.blocks)
         {
             Vector2Int target = b.gridPos + offset;
+            if (target.x < 0 || target.x >= rows || target.y < 0 || target.y >= cols) return false;
 
-            // check biên
-            if (target.x < 0 || target.x >= rows || target.y < 0 || target.y >= cols)
-                return false;
-
-            Block other = currentBlocks.FirstOrDefault(x => x.gridPos == target && x.group != draggedGroup);
-
-            if (other != null)
-            {
-                swapPairs.Add((b, other));
-            }
-            else
-            {
-                freeMoveBlocks.Add(b);
-            }
+            finalPositions[b] = target;
+            occupiedByMainGroup.Add(target);
         }
 
-        // =====================================
-        // 2. SWAP NHỮNG BLOCK BỊ ĐỤNG
-        // =====================================
-        foreach (var pair in swapPairs)
+        // 2. Xác định các block bị đụng (Hit Blocks)
+        List<Block> hitBlocks = currentBlocks
+            .Where(b => b.group != draggedGroup && occupiedByMainGroup.Contains(b.gridPos))
+            .ToList();
+
+        // 3. Xác định các ô sẽ trống sau khi group chính di chuyển
+        List<Vector2Int> availableSpots = GetEmptyPositions();
+        // Thêm vào các ô mà group chính vừa rời khỏi
+        foreach (var b in draggedGroup.blocks)
         {
-            Block a = pair.a;
-            Block b = pair.b;
-
-            newPositions[a] = b.gridPos;
-            newPositions[b] = a.gridPos;
+            availableSpots.Add(b.gridPos);
         }
+        // Loại bỏ những ô mà group chính sẽ chuyển đến
+        availableSpots.RemoveAll(pos => occupiedByMainGroup.Contains(pos));
 
-        // =====================================
-        // 3. MOVE BLOCK KHÔNG BỊ ĐỤNG
-        // =====================================
-        foreach (var b in freeMoveBlocks)
-        {
-            Vector2Int target = b.gridPos + offset;
-
-            // nếu ô đó sau khi swap đã bị chiếm → FAIL
-            if (newPositions.Values.Contains(target))
-                return false;
-
-            newPositions[b] = target;
-        }
-
-        // =====================================
-        // 4. CHECK ĐÈ NHAU
-        // =====================================
-        if (HasDuplicatePositions(newPositions))
-            return false;
-
-        // =====================================
-        // 5. SPLIT GROUP (CHỈ BLOCK BỊ ĐỤNG)
-        // =====================================
-        HashSet<Block> hitBlocks = new HashSet<Block>();
-
-        foreach (var pair in swapPairs)
-            hitBlocks.Add(pair.b);
+        // 4. Tìm chỗ cho các block bị đụng
+        HashSet<Vector2Int> usedByHitBlocks = new HashSet<Vector2Int>();
+        Dictionary<Block, Vector2Int> hitBlockNewMoves = new Dictionary<Block, Vector2Int>();
 
         foreach (var hb in hitBlocks)
         {
-            BlockGroup g = hb.group;
+            // Tìm ô trống trong availableSpots gần nhất với vị trí hiện tại của hb
+            Vector2Int bestSpot = availableSpots
+                .Where(pos => !usedByHitBlocks.Contains(pos))
+                .OrderBy(pos => Vector2Int.Distance(hb.gridPos, pos))
+                .FirstOrDefault();
 
-            if (g.blocks.Count > 1)
-            {
-                g.SplitByBlocks(new List<Block> { hb }, this.transform);
-            }
+            // Nếu không còn ô trống nào (trường hợp lưới quá đầy)
+            if (bestSpot == null && availableSpots.Count == 0) return false;
+
+            hitBlockNewMoves[hb] = bestSpot;
+            usedByHitBlocks.Add(bestSpot);
         }
 
-        // =====================================
-        // 6. APPLY
-        // =====================================
-        ApplyPositions(newPositions);
+        // 5. Kiểm tra tính hợp lệ cuối cùng (không có 2 block nào cùng 1 ô)
+        // (Đã đảm bảo qua logic lọc availableSpots bên trên)
 
+        // 6. Thực hiện thay đổi dữ liệu (Apply)
+
+        // Tách các block bị đụng ra khỏi group cũ của chúng vì chúng có thể bị đẩy đi các hướng khác nhau
+        foreach (var hb in hitBlocks)
+        {
+            if (hb.group.blocks.Count > 1)
+            {
+                hb.group.SplitByBlocks(new List<Block> { hb }, transform);
+            }
+            hb.gridPos = hitBlockNewMoves[hb];
+        }
+
+        // Cập nhật group chính
+        foreach (var b in draggedGroup.blocks)
+        {
+            b.gridPos = finalPositions[b];
+        }
+
+        // 7. Hoàn tất UI
+        UpdateAllBlockPositions();
+        CheckAndMergeGroups();
         return true;
     }
     bool HasDuplicatePositions(Dictionary<Block, Vector2Int> map)
@@ -627,8 +612,6 @@ public class PuzzleManager : MonoBehaviour
         {
             kvp.Key.gridPos = kvp.Value;
         }
-
-        // 🔥 thêm dòng này
         CompactGrid();
 
         UpdateAllBlockPositions();
