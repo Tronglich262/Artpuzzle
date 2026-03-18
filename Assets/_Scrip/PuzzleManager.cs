@@ -524,53 +524,85 @@ public class PuzzleManager : MonoBehaviour
         foreach (var b in currentBlocks)
             newPositions[b] = b.gridPos;
 
-        // 🔥 lưu block bị va chạm
-        List<Block> hitBlocks = new List<Block>();
+        List<(Block a, Block b)> swapPairs = new List<(Block, Block)>();
+        List<Block> freeMoveBlocks = new List<Block>();
 
+        // =====================================
+        // 1. PHÂN LOẠI BLOCK
+        // =====================================
         foreach (var b in draggedGroup.blocks)
         {
             Vector2Int target = b.gridPos + offset;
 
+            // check biên
             if (target.x < 0 || target.x >= rows || target.y < 0 || target.y >= cols)
                 return false;
 
-            Block other = currentBlocks.FirstOrDefault(x => x.gridPos == target && x != b);
+            Block other = currentBlocks.FirstOrDefault(x => x.gridPos == target && x.group != draggedGroup);
 
             if (other != null)
             {
-                hitBlocks.Add(other);
-
-                // swap
-                newPositions[b] = target;
-                newPositions[other] = b.gridPos;
+                swapPairs.Add((b, other));
             }
             else
             {
-                newPositions[b] = target;
+                freeMoveBlocks.Add(b);
             }
         }
 
-        // 🔥 CHECK TRÙNG
+        // =====================================
+        // 2. SWAP NHỮNG BLOCK BỊ ĐỤNG
+        // =====================================
+        foreach (var pair in swapPairs)
+        {
+            Block a = pair.a;
+            Block b = pair.b;
+
+            newPositions[a] = b.gridPos;
+            newPositions[b] = a.gridPos;
+        }
+
+        // =====================================
+        // 3. MOVE BLOCK KHÔNG BỊ ĐỤNG
+        // =====================================
+        foreach (var b in freeMoveBlocks)
+        {
+            Vector2Int target = b.gridPos + offset;
+
+            // nếu ô đó sau khi swap đã bị chiếm → FAIL
+            if (newPositions.Values.Contains(target))
+                return false;
+
+            newPositions[b] = target;
+        }
+
+        // =====================================
+        // 4. CHECK ĐÈ NHAU
+        // =====================================
         if (HasDuplicatePositions(newPositions))
             return false;
 
-        // ====================================
-        // 🔥 SPLIT GROUP TRƯỚC KHI APPLY
-        // ====================================
+        // =====================================
+        // 5. SPLIT GROUP (CHỈ BLOCK BỊ ĐỤNG)
+        // =====================================
+        HashSet<Block> hitBlocks = new HashSet<Block>();
+
+        foreach (var pair in swapPairs)
+            hitBlocks.Add(pair.b);
+
         foreach (var hb in hitBlocks)
         {
             BlockGroup g = hb.group;
 
             if (g.blocks.Count > 1)
             {
-                // chỉ tách block bị đụng
                 g.SplitByBlocks(new List<Block> { hb }, this.transform);
             }
         }
 
-        // ====================================
-        // APPLY
-        // ====================================
+        // =====================================
+        // 6. APPLY
+        // =====================================
         ApplyPositions(newPositions);
 
         return true;
@@ -596,8 +628,43 @@ public class PuzzleManager : MonoBehaviour
             kvp.Key.gridPos = kvp.Value;
         }
 
+        // 🔥 thêm dòng này
+        CompactGrid();
+
         UpdateAllBlockPositions();
         CheckAndMergeGroups();
     }
+    public void CompactGrid()
+    {
+        // Duyệt từng cột
+        for (int col = 0; col < cols; col++)
+        {
+            List<Block> columnBlocks = new List<Block>();
 
+            // 1. Lấy tất cả block trong cột này
+            foreach (var b in currentBlocks)
+            {
+                if (b.gridPos.y == col)
+                {
+                    columnBlocks.Add(b);
+                }
+            }
+
+            // 2. Sắp xếp theo hàng (từ dưới lên)
+            columnBlocks = columnBlocks
+                .OrderByDescending(b => b.gridPos.x)
+                .ToList();
+
+            // 3. Gán lại vị trí từ dưới lên
+            int targetRow = rows - 1;
+
+            foreach (var b in columnBlocks)
+            {
+                b.gridPos = new Vector2Int(targetRow, col);
+                targetRow--;
+            }
+        }
+
+        UpdateAllBlockPositions();
+    }
 }
