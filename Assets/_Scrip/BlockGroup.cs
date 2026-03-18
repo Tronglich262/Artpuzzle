@@ -4,6 +4,7 @@ using UnityEngine;
 public class BlockGroup
 {
     public List<Block> blocks = new List<Block>();
+    public Transform root;
 
     public void Merge(BlockGroup other)
     {

@@ -12,7 +12,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
     private Vector2 pointerStart;
     private Dictionary<Block, Vector2> startPositions = new Dictionary<Block, Vector2>();
-
+    private Dictionary<Block, Vector2Int> previewPositions = new Dictionary<Block, Vector2Int>();
     void Start()
     {
         rectTransform = GetComponent<RectTransform>();
@@ -25,8 +25,11 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     {
         rectTransform.SetAsLastSibling();
 
-        startPositions.Clear();   
-        transform.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad);
+        startPositions.Clear();
+        foreach (var b in block.group.blocks)
+        {
+            b.transform.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad);
+        }
         // lưu vị trí ban đầu của cả group
         foreach (var b in block.group.blocks)
         {
@@ -54,48 +57,123 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
         Vector2 delta = currentPointer - pointerStart;
 
-        // move toàn bộ group theo delta chuẩn
+        // 🔥 lock trục trước
+        if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
+            delta.y = 0;
+        else
+            delta.x = 0;
+
+        // 🔥 rồi mới move
         foreach (var b in block.group.blocks)
         {
             RectTransform rt = b.GetComponent<RectTransform>();
             rt.anchoredPosition = startPositions[b] + delta;
         }
+
     }
 
     public void OnPointerUp(PointerEventData eventData)
     {
-        Block nearest = null;
-        float minDist = float.MaxValue;
-        transform.DOScale(1f, 0.15f).SetEase(Ease.OutBack);
-        foreach (var b in puzzle.currentBlocks)
+        foreach (var b in block.group.blocks)
         {
-            if (b.group == block.group) continue;
+            b.transform.DOScale(1f, 0.15f).SetEase(Ease.OutBack);
+        }
 
-            float dist = Vector2.Distance(
-                block.GetComponent<RectTransform>().anchoredPosition,
-                b.targetPosition
-            );
+        BlockGroup draggedGroup = block.group;
 
-            if (dist < minDist)
+        previewPositions.Clear();
+
+        // 🔥 1. Tính vị trí grid cho TOÀN BỘ group
+        foreach (var b in draggedGroup.blocks)
+        {
+            Vector2 pos = b.GetComponent<RectTransform>().anchoredPosition;
+            Vector2Int grid = puzzle.PositionToGrid(pos);
+            previewPositions[b] = grid;
+        }
+
+        // 🔥 2. Check out of bounds
+        foreach (var kvp in previewPositions)
+        {
+            Vector2Int g = kvp.Value;
+
+            if (g.x < 0 || g.x >= puzzle.rows || g.y < 0 || g.y >= puzzle.cols)
             {
-                minDist = dist;
-                nearest = b;
+                ResetGroup(draggedGroup);
+                return;
             }
         }
 
-        float threshold = puzzle.blockSize * 0.6f;
+        // 🔥 3. Lấy tất cả vị trí target
+        List<Vector2Int> targetPositions = new List<Vector2Int>(previewPositions.Values);
 
-        if (nearest != null && minDist < threshold)
+        // 🔥 4. Lấy block bị đè
+        var hitBlocks = puzzle.GetBlocksAtPositions(targetPositions, draggedGroup);
+
+        // 🔥 5. Gom group bị ảnh hưởng
+        HashSet<BlockGroup> affectedGroups = new HashSet<BlockGroup>();
+        foreach (var b in hitBlocks)
         {
-            puzzle.SwapBlocks(block, nearest);
+            affectedGroups.Add(b.group);
         }
-        else
+
+        // 🔥 6. Check xem có push được không
+        foreach (var g in affectedGroups)
         {
-            // trả về đúng vị trí grid
-            foreach (var b in block.group.blocks)
+            foreach (var b in g.blocks)
             {
-                b.GetComponent<RectTransform>().anchoredPosition = b.targetPosition;
+                Vector2Int newPos = b.gridPos;
+
+                // tính direction push
+                Vector2Int dir = previewPositions[draggedGroup.blocks[0]] - draggedGroup.blocks[0].gridPos;
+
+                newPos -= dir;
+
+                if (newPos.x < 0 || newPos.x >= puzzle.rows || newPos.y < 0 || newPos.y >= puzzle.cols)
+                {
+                    ResetGroup(draggedGroup);
+                    return;
+                }
             }
+        }
+
+        // 🔥 7. Push các group bị đè
+        Vector2Int pushDir = previewPositions[draggedGroup.blocks[0]] - draggedGroup.blocks[0].gridPos;
+
+        foreach (var g in affectedGroups)
+        {
+            foreach (var b in g.blocks)
+            {
+                b.gridPos -= pushDir;
+            }
+        }
+
+        // 🔥 8. Apply vị trí mới cho group chính
+        foreach (var kvp in previewPositions)
+        {
+            kvp.Key.gridPos = kvp.Value;
+        }
+
+        // 🔥 9. Update + merge
+        puzzle.UpdateAllBlockPositions();
+        puzzle.CheckAndMergeGroups();
+    }
+
+    // Hàm tính trung tâm của một nhóm block
+    private Vector2 GetGroupCenter(BlockGroup group)
+    {
+        Vector2 sum = Vector2.zero;
+        foreach (var b in group.blocks)
+        {
+            sum += b.GetComponent<RectTransform>().anchoredPosition;
+        }
+        return sum / group.blocks.Count;
+    }
+    void ResetGroup(BlockGroup g)
+    {
+        foreach (var b in g.blocks)
+        {
+            b.GetComponent<RectTransform>().anchoredPosition = b.targetPosition;
         }
     }
+
 }

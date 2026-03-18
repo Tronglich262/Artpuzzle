@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 public class Block : MonoBehaviour
 {
-    public Image img; 
+    public Image img;
 
     public Vector2Int gridPos;
     public Vector2Int correctPos;
@@ -12,6 +12,6 @@ public class Block : MonoBehaviour
     public Vector2 targetPosition;
     public void UpdateTransform(float blockSize)
     {
-        transform.localPosition = targetPosition;
+        GetComponent<RectTransform>().anchoredPosition = targetPosition;
     }
 }

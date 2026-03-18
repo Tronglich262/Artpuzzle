@@ -41,10 +41,10 @@ public class PuzzleManager : MonoBehaviour
                 // Thiết lập tọa độ
                 b.gridPos = new Vector2Int(r, c);
                 b.correctPos = new Vector2Int(r, c);
-                
+
                 // Cắt ảnh
                 SetupBlockVisual(obj, r, c);
-                
+
                 currentBlocks.Add(b);
 
                 // Khởi tạo group riêng cho mỗi block
@@ -56,77 +56,80 @@ public class PuzzleManager : MonoBehaviour
         UpdateAllBlockPositions();
     }
 
-   void SetupBlockVisual(GameObject obj, int row, int col)
-{
-    Block b = obj.GetComponent<Block>();
-
-    if (b == null || b.img == null)
+    void SetupBlockVisual(GameObject obj, int row, int col)
     {
-        Debug.LogError("Block hoặc Image chưa gán!");
-        return;
+        Block b = obj.GetComponent<Block>();
+
+        if (b == null || b.img == null)
+        {
+            Debug.LogError("Block hoặc Image chưa gán!");
+            return;
+        }
+
+        int texW = sourceImage.texture.width;
+        int texH = sourceImage.texture.height;
+        int spriteW = texW / cols;
+        int spriteH = texH / rows;
+
+        Rect rect = new Rect(
+            col * spriteW,
+            texH - (row + 1) * spriteH,
+            spriteW,
+            spriteH
+        );
+
+        b.img.sprite = Sprite.Create(
+            sourceImage.texture,
+            rect,
+            new Vector2(0.5f, 0.5f)
+        );
     }
-
-    int texW = sourceImage.texture.width;
-    int texH = sourceImage.texture.height;
-    int spriteW = texW / cols;
-    int spriteH = texH / rows;
-
-    Rect rect = new Rect(
-        col * spriteW,
-        texH - (row + 1) * spriteH,
-        spriteW,
-        spriteH
-    );
-
-    b.img.sprite = Sprite.Create(
-        sourceImage.texture,
-        rect,
-        new Vector2(0.5f, 0.5f)
-    );
-}
 
     // --- LOGIC SWAP NHÓM ---
     public void SwapBlocks(Block a, Block b)
-{
-    if (a == null || b == null || a.group == b.group) return;
-
-    BlockGroup groupA = a.group;
-    BlockGroup groupB = b.group;
-
-    Vector2Int shift = b.gridPos - a.gridPos;
-
-    // --- BỔ SUNG: KIỂM TRA GIỚI HẠN LƯỚI ---
-    if (!CanMoveGroup(groupA, shift) || !CanMoveGroup(groupB, -shift)) 
     {
-        ResetGroupPosition(groupA);
-        ResetGroupPosition(groupB);
-        return; 
+        if (a == null || b == null || a.group == b.group) return;
+
+        BlockGroup groupA = a.group;
+        BlockGroup groupB = b.group;
+
+        Vector2Int shift = b.gridPos - a.gridPos;
+
+        // --- BỔ SUNG: KIỂM TRA GIỚI HẠN LƯỚI ---
+        if (!CanMoveGroup(groupA, shift) || !CanMoveGroup(groupB, -shift))
+        {
+            ResetGroupPosition(groupA);
+            ResetGroupPosition(groupB);
+            return;
+        }
+
+        foreach (Block blk in groupA.blocks) blk.gridPos += shift;
+        foreach (Block blk in groupB.blocks) blk.gridPos -= shift;
+
+        UpdateAllBlockPositions();
+        CheckAndMergeGroups();
     }
 
-    foreach (Block blk in groupA.blocks) blk.gridPos += shift;
-    foreach (Block blk in groupB.blocks) blk.gridPos -= shift;
-
-    UpdateAllBlockPositions();
-    CheckAndMergeGroups();
-}
-
-bool CanMoveGroup(BlockGroup g, Vector2Int shift)
-{
-    foreach (var b in g.blocks)
+    public bool CanMoveGroup(BlockGroup g, Vector2Int shift)
     {
-        Vector2Int nextPos = b.gridPos + shift;
-        if (nextPos.x < 0 || nextPos.x >= rows || nextPos.y < 0 || nextPos.y >= cols)
-            return false;
+        foreach (var b in g.blocks)
+        {
+            Vector2Int nextPos = b.gridPos + shift;
+            if (nextPos.x < 0 || nextPos.x >= rows || nextPos.y < 0 || nextPos.y >= cols)
+                return false;
+        }
+        return true;
     }
-    return true;
-}
 
-void ResetGroupPosition(BlockGroup g)
-{
-    foreach (var b in g.blocks) b.UpdateTransform(blockSize);
-}
+    void ResetGroupPosition(BlockGroup g)
+    {
+        foreach (var b in g.blocks)
+        {
+            b.GetComponent<RectTransform>().anchoredPosition = b.targetPosition;
+        }
+    }
 
-    void CheckAndMergeGroups()
+    public void CheckAndMergeGroups()
     {
         bool foundMerge = true;
         while (foundMerge) // Lặp lại cho đến khi không còn cặp nào ghép được
@@ -143,7 +146,7 @@ void ResetGroupPosition(BlockGroup g)
                     {
                         a.group.Merge(b.group);
                         foundMerge = true;
-                        break; 
+                        break;
                     }
                 }
                 if (foundMerge) break;
@@ -189,4 +192,32 @@ void ResetGroupPosition(BlockGroup g)
         }
         UpdateAllBlockPositions();
     }
+    public Vector2Int PositionToGrid(Vector2 pos)
+    {
+        float startX = -((cols - 1) * blockSize) / 2f;
+        float startY = ((rows - 1) * blockSize) / 2f;
+
+        int col = Mathf.RoundToInt((pos.x - startX) / blockSize);
+        int row = Mathf.RoundToInt((startY - pos.y) / blockSize);
+
+        return new Vector2Int(row, col);
+    }
+    public List<Block> GetBlocksAtPositions(List<Vector2Int> positions, BlockGroup ignoreGroup)
+    {
+        List<Block> result = new List<Block>();
+
+        foreach (var b in currentBlocks)
+        {
+            if (b.group == ignoreGroup) continue;
+
+            if (positions.Contains(b.gridPos))
+            {
+                result.Add(b);
+            }
+        }
+
+        return result;
+    }
+    
+    
 }
