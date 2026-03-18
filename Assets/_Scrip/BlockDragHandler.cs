@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
-
+using DG.Tweening;
 public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
 {
     private RectTransform rectTransform;
@@ -25,8 +25,8 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     {
         rectTransform.SetAsLastSibling();
 
-        startPositions.Clear();
-
+        startPositions.Clear();   
+        transform.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad);
         // lưu vị trí ban đầu của cả group
         foreach (var b in block.group.blocks)
         {
@@ -66,7 +66,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     {
         Block nearest = null;
         float minDist = float.MaxValue;
-
+        transform.DOScale(1f, 0.15f).SetEase(Ease.OutBack);
         foreach (var b in puzzle.currentBlocks)
         {
             if (b.group == block.group) continue;
