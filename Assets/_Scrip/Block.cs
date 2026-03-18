@@ -1,24 +1,17 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Block : MonoBehaviour
 {
+    public Image img; // kéo từ child vào
+
     public Vector2Int gridPos;
     public Vector2Int correctPos;
-    public Vector2 targetPosition;
 
     public BlockGroup group;
-
-    private Animator animator;
-
-    void Awake()
-    {
-        animator = GetComponent<Animator>();
-    }
-
+    public Vector2 targetPosition;
     public void UpdateTransform(float blockSize)
     {
-        RectTransform rt = GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(blockSize, blockSize);
-        rt.anchoredPosition = targetPosition;
+        transform.localPosition = targetPosition;
     }
 }

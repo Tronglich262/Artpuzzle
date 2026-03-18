@@ -56,16 +56,34 @@ public class PuzzleManager : MonoBehaviour
         UpdateAllBlockPositions();
     }
 
-    void SetupBlockVisual(GameObject obj, int row, int col)
-    {
-        int texW = sourceImage.texture.width;
-        int texH = sourceImage.texture.height;
-        int spriteW = texW / cols;
-        int spriteH = texH / rows;
+   void SetupBlockVisual(GameObject obj, int row, int col)
+{
+    Block b = obj.GetComponent<Block>();
 
-        Rect rect = new Rect(col * spriteW, texH - (row + 1) * spriteH, spriteW, spriteH);
-        obj.GetComponent<Image>().sprite = Sprite.Create(sourceImage.texture, rect, new Vector2(0.5f, 0.5f));
+    if (b == null || b.img == null)
+    {
+        Debug.LogError("Block hoặc Image chưa gán!");
+        return;
     }
+
+    int texW = sourceImage.texture.width;
+    int texH = sourceImage.texture.height;
+    int spriteW = texW / cols;
+    int spriteH = texH / rows;
+
+    Rect rect = new Rect(
+        col * spriteW,
+        texH - (row + 1) * spriteH,
+        spriteW,
+        spriteH
+    );
+
+    b.img.sprite = Sprite.Create(
+        sourceImage.texture,
+        rect,
+        new Vector2(0.5f, 0.5f)
+    );
+}
 
     // --- LOGIC SWAP NHÓM ---
     public void SwapBlocks(Block a, Block b)

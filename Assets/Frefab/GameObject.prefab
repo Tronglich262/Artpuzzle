@@ -125,6 +125,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fdee06cf446488f4b8cca45b4bb33d78, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Block
+  img: {fileID: 8231628198316707132}
   gridPos: {x: 0, y: 0}
   correctPos: {x: 0, y: 0}
   targetPosition: {x: 0, y: 0}

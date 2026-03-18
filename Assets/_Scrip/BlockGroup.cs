@@ -10,7 +10,7 @@ public class BlockGroup
         foreach (var b in other.blocks)
         {
             b.group = this;
-            this.blocks.Add(b);
+            blocks.Add(b);
         }
         other.blocks.Clear();
     }
