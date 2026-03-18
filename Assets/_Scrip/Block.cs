@@ -11,7 +11,7 @@ public class Block : MonoBehaviour
 
     public BlockGroup group;
     public Vector2 targetPosition;
-    public void UpdateTransform(float blockSize)
+    public void UpdateTransform()
     {
         GetComponent<RectTransform>()
             .DOAnchorPos(targetPosition, 0.2f)
