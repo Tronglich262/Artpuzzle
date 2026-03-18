@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using DG.Tweening;
+using UnityEngine.UI;
 
 public class BlockGroup
 {
@@ -13,6 +15,15 @@ public class BlockGroup
             b.group = this;
             b.transform.SetParent(root, true);
             blocks.Add(b);
+            var outline = b.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.enabled = false; 
+            }
+            b.img.DOColor(Color.white * 1.5f, 0.1f).OnComplete(() =>
+            {
+                b.img.DOColor(Color.white, 0.2f);
+            });
         }
         GameObject.Destroy(other.root.gameObject);
         other.blocks.Clear();

@@ -37,6 +37,7 @@ public class PuzzleManager : MonoBehaviour
                 SetupBlockVisual(obj, r, c);
                 currentBlocks.Add(b);
 
+
                 // Khởi tạo Group
                 BlockGroup g = new BlockGroup();
                 GameObject rootObj = new GameObject("GroupRoot", typeof(RectTransform));

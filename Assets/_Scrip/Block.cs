@@ -12,9 +12,12 @@ public class Block : MonoBehaviour
     public BlockGroup group;
     public Vector2 targetPosition;
     public void UpdateTransform()
-    {
-        GetComponent<RectTransform>()
-            .DOAnchorPos(targetPosition, 0.2f)
-            .SetEase(Ease.OutBack);
-    }
+{
+    float duration = 0.2f;
+    
+    GetComponent<RectTransform>()
+        .DOAnchorPos(targetPosition, duration)
+        .SetEase(Ease.OutCubic); 
+    transform.DOScale(Vector3.one, duration);
+}
 }
