@@ -49,8 +49,18 @@ public class PuzzleManager : MonoBehaviour
 
                 // Khởi tạo group riêng cho mỗi block
                 BlockGroup g = new BlockGroup();
+
+                GameObject rootObj = new GameObject("GroupRoot", typeof(RectTransform)); g.root = rootObj.transform;
+                RectTransform rt = rootObj.GetComponent<RectTransform>();
+                rt.SetParent(this.transform);
+                rt.localScale = Vector3.one;
+                rt.anchoredPosition = Vector2.zero;
+                rt.sizeDelta = Vector2.zero;
+                // ✅ trong PuzzleManager thì dùng this
+                g.root.SetParent(this.transform);
                 g.blocks.Add(b);
                 b.group = g;
+                b.transform.SetParent(g.root);
             }
         }
         UpdateAllBlockPositions();
@@ -204,20 +214,377 @@ public class PuzzleManager : MonoBehaviour
     }
     public List<Block> GetBlocksAtPositions(List<Vector2Int> positions, BlockGroup ignoreGroup)
     {
-        List<Block> result = new List<Block>();
+        return currentBlocks
+            .Where(b => b.group != ignoreGroup && positions.Contains(b.gridPos))
+            .ToList();
+    }
 
+    // =========================================
+    // MA TRẬN GRID - TRACK VỊ TRÍ TRỐNG
+    // =========================================
+
+    /// <summary>
+    /// Cập nhật ma trận grid: đánh dấu vị trí nào đã bị chiếm
+    /// </summary>
+    public void UpdateGridMatrix()
+    {
+        // Xóa tất cả marks
         foreach (var b in currentBlocks)
         {
-            if (b.group == ignoreGroup) continue;
+            b.gridMark = -1;
+        }
+    }
 
-            if (positions.Contains(b.gridPos))
+    /// <summary>
+    /// Kiểm tra xem vị trí có trống không (không có block nào ở đó)
+    /// </summary>
+    public bool IsPositionEmpty(Vector2Int pos)
+    {
+        return !currentBlocks.Any(b => b.gridPos == pos);
+    }
+
+    /// <summary>
+    /// Lấy tất cả vị trí trống trên lưới
+    /// </summary>
+    public List<Vector2Int> GetEmptyPositions()
+    {
+        List<Vector2Int> empty = new List<Vector2Int>();
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < cols; c++)
             {
-                result.Add(b);
+                Vector2Int pos = new Vector2Int(r, c);
+                if (IsPositionEmpty(pos))
+                {
+                    empty.Add(pos);
+                }
+            }
+        }
+        return empty;
+    }
+
+    /// <summary>
+    /// Tìm vị trí trống gần nhất với một vị trí cho trước
+    /// </summary>
+    public Vector2Int FindNearestEmptyPosition(Vector2Int fromPos)
+    {
+        List<Vector2Int> empty = GetEmptyPositions();
+        if (empty.Count == 0) return fromPos; // Không có chỗ trống
+
+        Vector2Int nearest = empty[0];
+        float minDist = Vector2Int.Distance(fromPos, nearest);
+
+        foreach (var pos in empty)
+        {
+            float dist = Vector2Int.Distance(fromPos, pos);
+            if (dist < minDist)
+            {
+                minDist = dist;
+                nearest = pos;
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>
+    /// Kiểm tra xem có đủ vị trí trống cho N block hay không
+    /// </summary>
+    public bool HasEnoughEmptyPositions(int count)
+    {
+        return GetEmptyPositions().Count >= count;
+    }
+
+    // =========================================
+    // LOGIC SWAP NÂNG CAO - TÌM VỊ TRÍ TRỐNG
+    // =========================================
+
+    /// <summary>
+    /// Swap nhóm với logic tìm vị trí trống
+    /// Trả về true nếu swap thành công
+    /// </summary>
+    public bool SwapGroupsWithEmptyCheck(BlockGroup groupA, BlockGroup groupB, Vector2Int offset)
+    {
+        if (groupA == null || groupB == null || groupA == groupB) return false;
+
+        // Bước 1: Thu thập tất cả vị trí mới mà mỗi nhóm sẽ chiếm
+        HashSet<Vector2Int> targetPositionsA = new HashSet<Vector2Int>(); // Nhóm A muốn đến
+        HashSet<Vector2Int> targetPositionsB = new HashSet<Vector2Int>(); // Nhóm B muốn đến
+
+        foreach (var b in groupA.blocks)
+        {
+            targetPositionsA.Add(b.gridPos + offset);
+        }
+
+        foreach (var b in groupB.blocks)
+        {
+            targetPositionsB.Add(b.gridPos - offset);
+        }
+
+        // Bước 2: Kiểm tra xem có block nào muốn đến cùng 1 vị trí không (trùng lặp)
+        // Nếu target của A trùng với target của B -> Cần tìm vị trí trống
+        HashSet<Vector2Int> targetAtoB = new HashSet<Vector2Int>(); // A muốn đến chỗ B
+        HashSet<Vector2Int> targetBtoA = new HashSet<Vector2Int>(); // B muốn đến chỗ A
+
+        // Tìm vị trí A muốn đến mà B đang chiếm (hoặc B cũng muốn đến)
+        foreach (var pos in targetPositionsA)
+        {
+            bool bOccupies = groupB.blocks.Any(b => b.gridPos == pos);
+            bool bAlsoWants = targetPositionsB.Contains(pos);
+            if (bOccupies || bAlsoWants)
+            {
+                targetAtoB.Add(pos);
             }
         }
 
-        return result;
+        // Tìm vị trí B muốn đến mà A đang chiếm (hoặc A cũng muốn đến)
+        foreach (var pos in targetPositionsB)
+        {
+            bool aOccupies = groupA.blocks.Any(b => b.gridPos == pos);
+            bool aAlsoWants = targetPositionsA.Contains(pos);
+            if (aOccupies || aAlsoWants)
+            {
+                targetBtoA.Add(pos);
+            }
+        }
+
+        // Bước 3: Đếm số vị trí bị trùng
+        int conflictCount = targetAtoB.Count;
+        if (conflictCount == 0)
+        {
+            // Không có trùng lặp -> Swap bình thường
+            ExecuteSwap(groupA, groupB, offset);
+            return true;
+        }
+
+        // Bước 4: Tìm vị trí trống cho các block bị trùng
+        // Các vị trí TRONG grid mà không có block nào
+        List<Vector2Int> emptyPositions = GetEmptyPositions();
+
+        if (emptyPositions.Count < conflictCount)
+        {
+            // Không đủ chỗ trống -> Không thể swap
+            return false;
+        }
+
+        // Bước 5: Gom các block cần tìm chỗ mới
+        List<Block> blocksNeedEmptyA = new List<Block>(); // A đang ở chỗ B muốn đến
+        List<Block> blocksNeedEmptyB = new List<Block>(); // B đang ở chỗ A muốn đến
+
+        foreach (var b in groupA.blocks)
+        {
+            if (targetAtoB.Contains(b.gridPos + offset))
+            {
+                blocksNeedEmptyA.Add(b);
+            }
+        }
+
+        foreach (var b in groupB.blocks)
+        {
+            if (targetBtoA.Contains(b.gridPos - offset))
+            {
+                blocksNeedEmptyB.Add(b);
+            }
+        }
+
+        // Bước 6: Thực hiện swap với logic đặc biệt
+        return ExecuteSwapWithEmptyPositions(groupA, groupB, offset, emptyPositions,
+                                              blocksNeedEmptyA, blocksNeedEmptyB);
     }
-    
-    
+
+    /// <summary>
+    /// Thực hiện swap cơ bản (không có trùng lặp vị trí)
+    /// </summary>
+    void ExecuteSwap(BlockGroup groupA, BlockGroup groupB, Vector2Int offset)
+    {
+        // Di chuyển nhóm B trước (để giải phóng chỗ cho A)
+        foreach (var b in groupB.blocks)
+        {
+            b.gridPos -= offset;
+        }
+
+        // Di chuyển nhóm A
+        foreach (var b in groupA.blocks)
+        {
+            b.gridPos += offset;
+        }
+
+        UpdateAllBlockPositions();
+        CheckAndMergeGroups();
+    }
+
+    /// <summary>
+    /// Thực hiện swap với việc tìm vị trí trống cho các block bị trùng
+    /// </summary>
+    bool ExecuteSwapWithEmptyPositions(BlockGroup groupA, BlockGroup groupB, Vector2Int offset,
+                                        List<Vector2Int> emptyPositions, 
+                                        List<Block> blocksNeedEmptyA,
+                                        List<Block> blocksNeedEmptyB)
+    {
+        // Danh sách vị trí trống đã được sử dụng
+        HashSet<Vector2Int> usedEmpty = new HashSet<Vector2Int>();
+
+        // Dictionary lưu vị trí mới cho mỗi block
+        Dictionary<Block, Vector2Int> newPositions = new Dictionary<Block, Vector2Int>();
+
+        // Bước 1: Xử lý block của A cần vị trí trống
+        foreach (var block in blocksNeedEmptyA)
+        {
+            Vector2Int currentTarget = block.gridPos + offset;
+
+            // Tìm vị trí trống gần nhất với vị trí block muốn đến
+            Vector2Int bestEmpty = FindNearestEmptyPositionForSet(currentTarget, emptyPositions, usedEmpty);
+            usedEmpty.Add(bestEmpty);
+            newPositions[block] = bestEmpty;
+        }
+
+        // Bước 2: Xử lý block của B cần vị trí trống
+        foreach (var block in blocksNeedEmptyB)
+        {
+            Vector2Int currentTarget = block.gridPos - offset;
+
+            Vector2Int bestEmpty = FindNearestEmptyPositionForSet(currentTarget, emptyPositions, usedEmpty);
+            usedEmpty.Add(bestEmpty);
+            newPositions[block] = bestEmpty;
+        }
+
+        // Bước 3: Các block còn lại (không bị trùng) - swap bình thường
+        // A đi đến chỗ B cũ (không bị trùng)
+        // B đi đến chỗ A cũ (không bị trùng)
+
+        // Bước 4: Cập nhật gridPos cho TẤT CẢ blocks
+        // Đầu tiên, đánh dấu blocks cần vị trí trống
+        HashSet<Block> blocksWithEmpty = new HashSet<Block>();
+        foreach (var block in blocksNeedEmptyA) blocksWithEmpty.Add(block);
+        foreach (var block in blocksNeedEmptyB) blocksWithEmpty.Add(block);
+
+        // Cập nhật blocks có vị trí trống
+        foreach (var kvp in newPositions)
+        {
+            kvp.Key.gridPos = kvp.Value;
+        }
+
+        // Cập nhật blocks còn lại của A (đi đến chỗ B cũ)
+        foreach (var b in groupA.blocks)
+        {
+            if (!blocksWithEmpty.Contains(b))
+            {
+                b.gridPos += offset;
+            }
+        }
+
+        // Cập nhật blocks còn lại của B (đi đến chỗ A cũ)
+        foreach (var b in groupB.blocks)
+        {
+            if (!blocksWithEmpty.Contains(b))
+            {
+                b.gridPos -= offset;
+            }
+        }
+
+        UpdateAllBlockPositions();
+        CheckAndMergeGroups();
+        return true;
+    }
+
+    /// <summary>
+    /// Tìm vị trí trống gần nhất (từ tập hợp cho phép)
+    /// </summary>
+    Vector2Int FindNearestEmptyPositionForSet(Vector2Int fromPos, 
+                                               List<Vector2Int> allEmpty, 
+                                               HashSet<Vector2Int> usedEmpty)
+    {
+        Vector2Int best = allEmpty[0];
+        float minDist = float.MaxValue;
+
+        foreach (var empty in allEmpty)
+        {
+            if (usedEmpty.Contains(empty)) continue;
+
+            float dist = Vector2Int.Distance(fromPos, empty);
+            if (dist < minDist)
+            {
+                minDist = dist;
+                best = empty;
+            }
+        }
+        return best;
+    }
+
+    // =========================================
+    // CẬP NHẬT DRAG HANDLER
+    // =========================================
+
+    /// <summary>
+    /// Di chuyển nhóm với offset và tự động swap với các nhóm khác
+    /// </summary>
+    public bool MoveGroupWithPush(BlockGroup draggedGroup, Vector2Int offset)
+    {
+        // 1. Tính vị trí mới của tất cả blocks trong nhóm kéo
+        List<Vector2Int> targetPositions = draggedGroup.blocks.Select(b => b.gridPos + offset).ToList();
+
+        // 2. Tìm tất cả blocks bị "chiếm chỗ"
+        var hitBlocks = GetBlocksAtPositions(targetPositions, draggedGroup);
+
+        // 3. Nếu không có ai bị chiếm chỗ -> Di chuyển bình thường
+        if (hitBlocks.Count == 0)
+        {
+            foreach (var b in draggedGroup.blocks)
+            {
+                b.gridPos += offset;
+            }
+            UpdateAllBlockPositions();
+            CheckAndMergeGroups();
+            return true;
+        }
+
+        // 4. Gom các nhóm bị ảnh hưởng (loại bỏ trùng lặp)
+        HashSet<BlockGroup> affectedGroups = new HashSet<BlockGroup>();
+        foreach (var hb in hitBlocks)
+        {
+            if (hb.group != draggedGroup)
+                affectedGroups.Add(hb.group);
+        }
+
+        if (affectedGroups.Count == 0)
+        {
+            // Không có nhóm nào bị ảnh hưởng -> Di chuyển bình thường
+            foreach (var b in draggedGroup.blocks)
+            {
+                b.gridPos += offset;
+            }
+            UpdateAllBlockPositions();
+            CheckAndMergeGroups();
+            return true;
+        }
+
+        // 5. Swap với nhóm bị ảnh hưởng đầu tiên
+        var groupB = affectedGroups.First();
+
+        // Kiểm tra giới hạn grid
+        if (!CanMoveGroup(draggedGroup, offset) || !CanMoveGroup(groupB, -offset))
+        {
+            return false;
+        }
+
+        // 6. Thực hiện swap
+        // Bước 1: Di chuyển blocks của groupB đến vị trí mới
+        foreach (var b in groupB.blocks)
+        {
+            b.gridPos -= offset;
+        }
+
+        // Bước 2: Di chuyển blocks của draggedGroup đến vị trí mới
+        foreach (var b in draggedGroup.blocks)
+        {
+            b.gridPos += offset;
+        }
+
+        // Bước 3: Cập nhật visual
+        UpdateAllBlockPositions();
+
+        // Bước 4: Kiểm tra merge (nếu các block đã đúng vị trí liền kề)
+        CheckAndMergeGroups();
+
+        return true;
+    }
 }
