@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using DG.Tweening;
 using UnityEngine.UI;
-
+using System.Linq;
 public class BlockGroup
 {
     public List<Block> blocks = new List<Block>();
@@ -15,19 +15,18 @@ public class BlockGroup
             b.group = this;
             b.transform.SetParent(root, true);
             blocks.Add(b);
-            var outline = b.GetComponent<Outline>();
-            if (outline != null)
-            {
-                outline.enabled = false; 
-            }
+
             b.img.DOColor(Color.white * 1.5f, 0.1f).OnComplete(() =>
             {
                 b.img.DOColor(Color.white, 0.2f);
             });
         }
+
+        // Cập nhật viền cho cả nhóm sau khi merge
+        UpdateGroupVisuals();
+
         GameObject.Destroy(other.root.gameObject);
         other.blocks.Clear();
-
         foreach (var b in blocks) b.transform.localScale = Vector3.one;
     }
 
@@ -45,5 +44,48 @@ public class BlockGroup
             newGroup.blocks.Add(b);
             blocks.Remove(b);
         }
+
+        // Cập nhật viền cho cả nhóm cũ và nhóm mới
+        UpdateGroupVisuals();
+        newGroup.UpdateGroupVisuals();
+    }
+
+    public void UpdateGroupVisuals()
+    {
+        if (blocks.Count == 0) return;
+
+        // Nếu chỉ có 1 khối, luôn hiện outline
+        if (blocks.Count == 1)
+        {
+            blocks[0].SetOutline(true);
+            return;
+        }
+
+        // Nếu có nhiều khối, ta chỉ hiện Outline cho những khối ở biên
+        foreach (var b in blocks)
+        {
+            bool isEdge = IsBlockOnEdge(b);
+            b.SetOutline(isEdge);
+        }
+    }
+
+    private bool IsBlockOnEdge(Block b)
+    {
+        // Kiểm tra 4 hướng xung quanh xem có khối nào cùng Group không
+        Vector2Int[] neighbors = {
+            new Vector2Int(b.gridPos.x + 1, b.gridPos.y),
+            new Vector2Int(b.gridPos.x - 1, b.gridPos.y),
+            new Vector2Int(b.gridPos.x, b.gridPos.y + 1),
+            new Vector2Int(b.gridPos.x, b.gridPos.y - 1)
+        };
+
+        foreach (var nPos in neighbors)
+        {
+            // Nếu có ít nhất 1 hướng trống (không có block cùng group), thì nó là block biên
+            bool hasNeighborInGroup = blocks.Any(other => other.gridPos == nPos);
+            if (!hasNeighborInGroup) return true;
+        }
+
+        return false;
     }
 }

@@ -2,14 +2,22 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Linq;
-
+using DG.Tweening;
+using UnityEngine.InputSystem;
 public class PuzzleManager : MonoBehaviour
 {
+    [Header("Level System")]
+    public List<PuzzleLevel> levels;
+    private int currentLevelIndex = 0;
+    // Level Data
     public Sprite sourceImage;
     public GameObject blockPrefab;
     public int rows = 3;
     public int cols = 3;
     public float blockSize = 100f;
+    //btn help
+    [SerializeField] public int maxHints = 100;
+    private int currentHintsUsed = 0;
 
     [HideInInspector]
     public List<Block> currentBlocks = new List<Block>();
@@ -19,7 +27,41 @@ public class PuzzleManager : MonoBehaviour
         GeneratePuzzle();
         ShuffleBlocks();
     }
+    void Update()
+    {
+        if (Keyboard.current.aKey.wasPressedThisFrame)
+        {
+            NextLevel();
+        }
 
+    }
+
+    public void NextLevel()
+    {
+        int nextIndex = currentLevelIndex + 1;
+        if (nextIndex >= levels.Count)
+        {
+            nextIndex = 0;
+        }
+        LoadLevel(nextIndex);
+    }
+
+    private void LoadLevel(int index)
+    {
+        if (levels == null || levels.Count == 0) return;
+
+        currentLevelIndex = index;
+        PuzzleLevel data = levels[index];
+
+        // Cập nhật thông số từ ScriptableObject
+        this.sourceImage = data.levelImage;
+        this.rows = data.rows;
+        this.cols = data.cols;
+        this.maxHints = data.hintLimit;
+        this.currentHintsUsed = 0;
+        GeneratePuzzle();
+        ShuffleBlocks();
+    }
     public void GeneratePuzzle()
     {
         foreach (Transform child in transform) Destroy(child.gameObject);
@@ -44,9 +86,11 @@ public class PuzzleManager : MonoBehaviour
                 g.root = rootObj.transform;
                 g.root.SetParent(this.transform, false);
 
+
                 b.group = g;
                 g.blocks.Add(b);
                 b.transform.SetParent(g.root);
+                b.SetOutline(true);
             }
         }
         UpdateAllBlockPositions();
@@ -194,6 +238,65 @@ public class PuzzleManager : MonoBehaviour
             Vector2Int nextPos = b.gridPos + shift;
             if (nextPos.x < 0 || nextPos.x >= rows || nextPos.y < 0 || nextPos.y >= cols) return false;
         }
+        return true;
+    }
+    //btn help
+    public void OnHintButtonClicked()
+    {
+        if (currentHintsUsed >= maxHints)
+        {
+            return;
+        }
+        if (AutoSolveOneStep())
+        {
+            currentHintsUsed++;
+        }
+    }
+
+    public bool AutoSolveOneStep()
+    {
+        // 1. Chỉ tìm những block chưa nằm đúng vị trí (gridPos != correctPos)
+        var wrongBlocks = currentBlocks.Where(b => b.gridPos != b.correctPos).ToList();
+
+        if (wrongBlocks.Count == 0) return false; // Đã thắng hoặc không còn mảnh sai
+
+        // 2. Chọn 1 mảnh ngẫu nhiên để "cứu"
+        Block targetBlock = wrongBlocks[Random.Range(0, wrongBlocks.Count)];
+
+        // 3. TÁCH MẢNH: Nếu nó đang nằm trong một Group (mà Group đó đang sai), phải tách nó ra
+        if (targetBlock.group.blocks.Count > 1)
+        {
+            targetBlock.group.SplitByBlocks(new List<Block> { targetBlock }, transform);
+        }
+
+        // 4. KIỂM TRA VỊ TRÍ ĐÍCH: Xem có mảnh nào đang chiếm chỗ đúng của targetBlock không
+        Vector2Int destination = targetBlock.correctPos;
+        Block blocker = currentBlocks.FirstOrDefault(b => b.gridPos == destination && b != targetBlock);
+
+        if (blocker != null)
+        {
+            // Nếu kẻ chiếm chỗ cũng đang nằm trong Group, tách nó ra để dễ "đá" đi chỗ khác
+            if (blocker.group.blocks.Count > 1)
+            {
+                blocker.group.SplitByBlocks(new List<Block> { blocker }, transform);
+            }
+
+            // Tìm 1 ô trống bất kỳ để đẩy kẻ chiếm chỗ sang đó
+            Vector2Int emptySpot = GetEmptyPositions().FirstOrDefault();
+            blocker.gridPos = emptySpot;
+        }
+
+        // 5. ĐƯA VỀ VỊ TRÍ ĐÚNG
+        targetBlock.gridPos = destination;
+
+        // 6. CẬP NHẬT GIAO DIỆN & LOGIC GHÉP
+        UpdateAllBlockPositions();
+        CheckAndMergeGroups();
+        targetBlock.img.DOColor(Color.green, 0.3f).OnComplete(() =>
+        {
+            targetBlock.img.DOColor(Color.white, 0.5f);
+        });
+
         return true;
     }
 }

@@ -613,7 +613,19 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 543428834}
   m_OnClick:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 2108406052}
+        m_TargetAssemblyTypeName: PuzzleManager, Assembly-CSharp
+        m_MethodName: OnHintButtonClicked
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &543428834
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1925,11 +1937,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 03dda5e5830f44d408b6e569b50baf4a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PuzzleManager
+  levels:
+  - {fileID: 11400000, guid: 2388519cbb4e16142a7f8992c0440520, type: 2}
   sourceImage: {fileID: 21300000, guid: b29ad7cc2e2eb0d41bafe6ae82ff2c27, type: 3}
   blockPrefab: {fileID: 2888490928715737953, guid: 4c154d29db088b447847626e0d76fc8c, type: 3}
   rows: 4
   cols: 3
   blockSize: 312
+  maxHints: 100
   currentBlocks: []
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
