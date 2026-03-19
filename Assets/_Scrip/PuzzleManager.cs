@@ -10,63 +10,35 @@ public class PuzzleManager : MonoBehaviour
     public List<PuzzleLevel> levels;
 
     //level Data
-    private int currentLevelIndex = 0;
+    public int currentLevelIndex = 0;
     [SerializeField]  public Sprite sourceImage;
     [SerializeField] public GameObject blockPrefab;
     [SerializeField] public int rows = 3;
     [SerializeField] public int cols = 3;
     [SerializeField] public float blockSize = 100f;
 
-    //btn help
-    [SerializeField] public int maxHints = 100;
-    private int currentHintsUsed = 0;
-
     [HideInInspector]
     public List<Block> currentBlocks = new List<Block>();
+    //singleton
+    public static PuzzleManager Instance { get; private set; }
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+    }
 
     void Start()
     {
         GeneratePuzzle();
         ShuffleBlocks();
     }
-    void Update()
-    {
-        if (Keyboard.current.aKey.wasPressedThisFrame)
-        {
-            NextLevel();
-        }
-
-    }
-
-    public void NextLevel()
-    {
-        int nextIndex = currentLevelIndex + 1;
-        if (nextIndex >= levels.Count)
-        {
-            nextIndex = 0;
-        }
-        LoadLevel(nextIndex);
-    }
-    private void LoadLevel(int index)
-    {
-        if (levels == null || levels.Count == 0)
-        {
-            Debug.Log("Level null or == 0");
-            return;
-        } 
-
-        currentLevelIndex = index;
-        PuzzleLevel data = levels[index];
-        // Cập nhật thông số từ ScriptableObject
-        this.sourceImage = data.levelImage;
-        this.rows = data.rows;
-        this.cols = data.cols;
-        this.maxHints = data.hintLimit;
-        Debug.Log("SourceImage: " + (sourceImage == null ? "NULL" : "true" + "Level: " + currentLevelIndex));
-        this.currentHintsUsed = 0;
-        GeneratePuzzle();
-        ShuffleBlocks();
-    }
+  
     //xoá block cũ , tạo block mới theo thông số level, gán sprite, tạo group mới cho từng block
     public void GeneratePuzzle()
     {
@@ -128,7 +100,7 @@ public class PuzzleManager : MonoBehaviour
             occupied.Add(target);
         }
 
-        // 2. Tìm block bị đụng (O(n))
+        // 2. Tìm block bị đụng
         var hitBlocks = new List<Block>();
         foreach (var b in currentBlocks)
         {
@@ -162,7 +134,7 @@ public class PuzzleManager : MonoBehaviour
                 var pos = available[i];
                 if (used.Contains(pos)) continue;
 
-                float dist = (hb.gridPos - pos).sqrMagnitude; // nhanh hơn Distance
+                float dist = (hb.gridPos - pos).sqrMagnitude; 
 
                 if (dist < bestDist)
                 {
@@ -177,8 +149,6 @@ public class PuzzleManager : MonoBehaviour
             hitMoves[hb] = bestSpot;
             used.Add(bestSpot);
         }
-
-        // 5. Apply push
         foreach (var hb in hitBlocks)
         {
             if (hb.group.blocks.Count > 1)
@@ -186,12 +156,8 @@ public class PuzzleManager : MonoBehaviour
 
             hb.gridPos = hitMoves[hb];
         }
-
-        // 6. Move main group
         foreach (var b in draggedGroup.blocks)
             b.gridPos = finalPositions[b];
-
-        // 7. Update
         UpdateAllBlockPositions();
         CheckAndMergeGroups();
 
@@ -284,59 +250,5 @@ public class PuzzleManager : MonoBehaviour
         }
         return true;
     }
-    //btn help
-    public void OnHintButtonClicked()
-    {
-        if (currentHintsUsed >= maxHints)
-        {
-            return;
-        }
-        if (AutoSolveOneStep())
-        {
-            currentHintsUsed++;
-        }
-    }
-    // Tự động giải một bước: chọn một block sai vị trí, nếu nó đang bị chặn bởi block khác thì đẩy block đó sang vị trí trống, sau đó đưa block về đúng vị trí
-    public bool AutoSolveOneStep()
-    {
-        // 1. Chỉ tìm những block chưa nằm đúng vị trí (gridPos != correctPos)
-        var wrongBlocks = currentBlocks.Where(b => b.gridPos != b.correctPos).ToList();
-
-        if (wrongBlocks.Count == 0)
-        {
-            Debug.Log("Win");
-            NextLevel();
-            return false;
-        }
-        // 2. Chọn 1 mảnh ngẫu nhiên để "cứu"
-        Block targetBlock = wrongBlocks[Random.Range(0, wrongBlocks.Count)];
-        // 3. TÁCH MẢNH: Nếu nó đang nằm trong một Group (mà Group đó đang sai), phải tách nó ra
-        if (targetBlock.group.blocks.Count > 1)
-        {
-            targetBlock.group.SplitByBlocks(new List<Block> { targetBlock }, transform);
-        }
-        // 4. KIỂM TRA VỊ TRÍ ĐÍCH: Xem có mảnh nào đang chiếm chỗ đúng của targetBlock không
-        Vector2Int destination = targetBlock.correctPos;
-        Block blocker = currentBlocks.FirstOrDefault(b => b.gridPos == destination && b != targetBlock);
-        if (blocker != null)
-        {
-            // Nếu kẻ chiếm chỗ cũng đang nằm trong Group, tách nó ra để dễ "đá" đi chỗ khác
-            if (blocker.group.blocks.Count > 1)
-            {
-                blocker.group.SplitByBlocks(new List<Block> { blocker }, transform);
-            }
-            // Tìm 1 ô trống bất kỳ để đẩy kẻ chiếm chỗ sang đó
-            Vector2Int emptySpot = GetEmptyPositions().FirstOrDefault();
-            blocker.gridPos = emptySpot;
-        }
-        // 5. ĐƯA VỀ VỊ TRÍ ĐÚNG
-        targetBlock.gridPos = destination;
-        UpdateAllBlockPositions();
-        CheckAndMergeGroups();
-        targetBlock.img.DOColor(Color.green, 0.3f).OnComplete(() =>
-        {
-            targetBlock.img.DOColor(Color.white, 0.5f);
-        });
-        return true;
-    }
+    
 }
