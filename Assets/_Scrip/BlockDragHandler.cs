@@ -22,6 +22,8 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     // khi click vào image
     public void OnPointerDown(PointerEventData eventData)
     {
+
+        if (puzzle.isTweening) return;
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
         rootRect.SetAsLastSibling();
         rootRect.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad);
@@ -36,6 +38,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     //kéo ảnh
     public void OnDrag(PointerEventData eventData)
     {
+        if (puzzle.isTweening) return;
         Vector2 currentPointer;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             canvas.GetComponent<RectTransform>(),
@@ -50,6 +53,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     //thả ảnh
     public void OnPointerUp(PointerEventData eventData)
     {
+        if (puzzle.isTweening) return;
         BlockGroup draggedGroup = block.group;
         RectTransform rootRect = draggedGroup.root.GetComponent<RectTransform>();
         rootRect.DOScale(1f, 0.1f);
@@ -94,11 +98,17 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
     void ResetGroup(BlockGroup g)
     {
+        puzzle.SetTweening(true); // Khóa lại
+        int count = 0;
         foreach (var b in g.blocks)
         {
-            b.GetComponent<RectTransform>().DOAnchorPos(b.targetPosition, 0.2f);
+            b.GetComponent<RectTransform>().DOAnchorPos(b.targetPosition, 0.2f)
+                .OnComplete(() =>
+                {
+                    count++;
+                    if (count >= g.blocks.Count) puzzle.SetTweening(false); // Mở khóa
+                });
         }
-
         g.root.GetComponent<RectTransform>().anchoredPosition = Vector2.zero;
     }
 }

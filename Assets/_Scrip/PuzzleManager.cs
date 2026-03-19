@@ -16,6 +16,10 @@ public class PuzzleManager : MonoBehaviour
     [SerializeField] public int rows = 3;
     [SerializeField] public int cols = 3;
     [SerializeField] public float blockSize = 100f;
+    public bool isTweening { get; private set; } // Khóa trạng thái
+
+    public void SetTweening(bool state) => isTweening = state;
+
 
     [HideInInspector]
     public List<Block> currentBlocks = new List<Block>();
@@ -215,13 +219,21 @@ public class PuzzleManager : MonoBehaviour
     // Cập nhật vị trí thực tế của tất cả block dựa trên gridPos của chúng
     public void UpdateAllBlockPositions()
     {
+        isTweening = true; // Bắt đầu di chuyển
+        int completedCount = 0;
+
         foreach (var b in currentBlocks)
         {
             b.targetPosition = GridToPosition(b.gridPos);
-
             b.GetComponent<RectTransform>()
              .DOAnchorPos(b.targetPosition, 0.4f)
-             .SetEase(Ease.OutQuad);
+             .SetEase(Ease.OutQuad)
+             .OnComplete(() =>
+             {
+                 completedCount++;
+                 if (completedCount >= currentBlocks.Count)
+                     isTweening = false; // Mở khóa khi tất cả đã xong
+             });
         }
     }
     // Chuyển từ tọa độ lưới (row, col) sang vị trí thực tế trên
