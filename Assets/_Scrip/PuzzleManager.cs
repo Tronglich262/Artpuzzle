@@ -11,7 +11,7 @@ public class PuzzleManager : MonoBehaviour
 
     //level Data
     public int currentLevelIndex = 0;
-    [SerializeField]  public Sprite sourceImage;
+    [SerializeField] public Sprite sourceImage;
     [SerializeField] public GameObject blockPrefab;
     [SerializeField] public int rows = 3;
     [SerializeField] public int cols = 3;
@@ -38,7 +38,7 @@ public class PuzzleManager : MonoBehaviour
         GeneratePuzzle();
         ShuffleBlocks();
     }
-  
+
     //xoá block cũ , tạo block mới theo thông số level, gán sprite, tạo group mới cho từng block
     public void GeneratePuzzle()
     {
@@ -134,7 +134,7 @@ public class PuzzleManager : MonoBehaviour
                 var pos = available[i];
                 if (used.Contains(pos)) continue;
 
-                float dist = (hb.gridPos - pos).sqrMagnitude; 
+                float dist = (hb.gridPos - pos).sqrMagnitude;
 
                 if (dist < bestDist)
                 {
@@ -161,6 +161,16 @@ public class PuzzleManager : MonoBehaviour
             b.gridPos = finalPositions[b];
         UpdateAllBlockPositions();
         CheckAndMergeGroups();
+        //tach grouproot
+        var allGroups = currentBlocks
+            .Select(b => b.group)
+            .Distinct()
+            .ToList();
+
+        foreach (var g in allGroups)
+        {
+            g.SplitIfDisconnected(transform);
+        }
         draggedGroup.root.SetAsLastSibling();
         int topIndex = draggedGroup.root.GetSiblingIndex();
         int currentIndex = topIndex - 1;
@@ -262,5 +272,5 @@ public class PuzzleManager : MonoBehaviour
         }
         return true;
     }
-    
+
 }

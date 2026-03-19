@@ -58,7 +58,7 @@ public class BlockGroup
 
     public void UpdateGroupVisuals()
     {
-        if (blocks.Count == 0) 
+        if (blocks.Count == 0)
         {
             Debug.Log("Nhóm rỗng, không hiện outline");
             return;
@@ -92,6 +92,79 @@ public class BlockGroup
             if (!hasNeighborInGroup) return true;
         }
 
-        return false; 
+        return false;
+    }
+    public List<List<Block>> GetConnectedSubgroups()
+    {
+        List<List<Block>> result = new List<List<Block>>();
+        HashSet<Block> visited = new HashSet<Block>();
+
+        foreach (var start in blocks)
+        {
+            if (visited.Contains(start)) continue;
+
+            List<Block> group = new List<Block>();
+            Queue<Block> q = new Queue<Block>();
+            q.Enqueue(start);
+            visited.Add(start);
+
+            while (q.Count > 0)
+            {
+                var current = q.Dequeue();
+                group.Add(current);
+
+                Vector2Int[] dirs = {
+                Vector2Int.up,
+                Vector2Int.down,
+                Vector2Int.left,
+                Vector2Int.right
+            };
+
+                foreach (var d in dirs)
+                {
+                    Vector2Int neighborPos = current.gridPos + d;
+
+                    var neighbor = blocks.FirstOrDefault(b => b.gridPos == neighborPos);
+                    if (neighbor != null && !visited.Contains(neighbor))
+                    {
+                        visited.Add(neighbor);
+                        q.Enqueue(neighbor);
+                    }
+                }
+            }
+
+            result.Add(group);
+        }
+
+        return result;
+    }
+    public void SplitIfDisconnected(Transform parent)
+    {
+        var subgroups = GetConnectedSubgroups();
+
+        if (subgroups.Count <= 1) return;
+
+        // Xóa group cũ
+        var oldBlocks = new List<Block>(blocks);
+        blocks.Clear();
+
+        foreach (var sub in subgroups)
+        {
+            BlockGroup newGroup = new BlockGroup();
+            GameObject rootObj = new GameObject("AutoSplitGroup", typeof(RectTransform));
+            rootObj.transform.SetParent(parent, false);
+            newGroup.root = rootObj.transform;
+
+            foreach (var b in sub)
+            {
+                b.group = newGroup;
+                b.transform.SetParent(newGroup.root, true);
+                newGroup.blocks.Add(b);
+            }
+
+            newGroup.UpdateGroupVisuals();
+        }
+
+        GameObject.Destroy(root.gameObject);
     }
 }
