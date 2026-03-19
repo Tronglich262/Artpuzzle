@@ -21,8 +21,6 @@ public class Block : MonoBehaviour
     public void UpdateTransform()
     {
         float duration = 0.2f;
-
-        // Di chuyển mượt mà về vị trí đích trong Group
         GetComponent<RectTransform>()
             .DOAnchorPos(targetPosition, duration)
             .SetEase(Ease.OutCubic);

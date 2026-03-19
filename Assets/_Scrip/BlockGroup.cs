@@ -21,13 +21,19 @@ public class BlockGroup
                 b.img.DOColor(Color.white, 0.2f);
             });
         }
-
         // Cập nhật viền cho cả nhóm sau khi merge
         UpdateGroupVisuals();
         DOTween.Kill(other.root);
         GameObject.Destroy(other.root.gameObject);
         other.blocks.Clear();
         foreach (var b in blocks) b.transform.localScale = Vector3.one;
+        root.localScale = Vector3.one;
+        root.DOScale(1.25f, 0.15f)
+            .SetEase(Ease.OutQuad)
+            .OnComplete(() =>
+            {
+                root.DOScale(1f, 0.2f).SetEase(Ease.OutQuad);
+            });
     }
 
     public void SplitByBlocks(List<Block> blocksToExtract, Transform parent)
@@ -52,15 +58,17 @@ public class BlockGroup
 
     public void UpdateGroupVisuals()
     {
-        if (blocks.Count == 0) return;
-
-        // Nếu chỉ có 1 khối, luôn hiện outline
+        if (blocks.Count == 0) 
+        {
+            Debug.Log("Nhóm rỗng, không hiện outline");
+            return;
+        }
         if (blocks.Count == 1)
         {
+            Debug.Log("1 khối, hiện outline");
             blocks[0].SetOutline(true);
             return;
         }
-
         // Nếu có nhiều khối, ta chỉ hiện Outline cho những khối ở biên
         foreach (var b in blocks)
         {
@@ -71,14 +79,12 @@ public class BlockGroup
 
     private bool IsBlockOnEdge(Block b)
     {
-        // Kiểm tra 4 hướng xung quanh xem có khối nào cùng Group không
         Vector2Int[] neighbors = {
             new Vector2Int(b.gridPos.x + 1, b.gridPos.y),
             new Vector2Int(b.gridPos.x - 1, b.gridPos.y),
             new Vector2Int(b.gridPos.x, b.gridPos.y + 1),
             new Vector2Int(b.gridPos.x, b.gridPos.y - 1)
         };
-
         foreach (var nPos in neighbors)
         {
             // Nếu có ít nhất 1 hướng trống (không có block cùng group), thì nó là block biên
@@ -86,6 +92,6 @@ public class BlockGroup
             if (!hasNeighborInGroup) return true;
         }
 
-        return false;
+        return false; 
     }
 }

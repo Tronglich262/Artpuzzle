@@ -19,16 +19,13 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         puzzle = GetComponentInParent<PuzzleManager>();
         block = GetComponent<Block>();
     }
-
+    // khi click vào image
     public void OnPointerDown(PointerEventData eventData)
     {
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
-
         rootRect.SetAsLastSibling();
         rootRect.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad);
-
         rootStartPos = rootRect.anchoredPosition;
-
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             canvas.GetComponent<RectTransform>(),
             eventData.position,
@@ -36,27 +33,21 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             out pointerStart
         );
     }
-
+    //kéo ảnh
     public void OnDrag(PointerEventData eventData)
     {
         Vector2 currentPointer;
-
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             canvas.GetComponent<RectTransform>(),
             eventData.position,
             eventData.pressEventCamera,
             out currentPointer
         );
-
         Vector2 delta = currentPointer - pointerStart;
-
-        // BỎ LOCK TRỤC - cho phép kéo tự do mọi hướng (kể cả chéo)
-        // delta.x và delta.y giữ nguyên không ép về 0
-
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
         rootRect.anchoredPosition = rootStartPos + delta;
     }
-
+    //thả ảnh
     public void OnPointerUp(PointerEventData eventData)
     {
         BlockGroup draggedGroup = block.group;
@@ -67,36 +58,29 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         Vector2 worldPosOfHeldBlock = (Vector2)block.GetComponent<RectTransform>().anchoredPosition + rootRect.anchoredPosition;
         Vector2Int targetGridOfHeldBlock = puzzle.PositionToGrid(worldPosOfHeldBlock);
         Vector2Int offset = targetGridOfHeldBlock - block.gridPos;
-
-        // Nếu không di chuyển, reset về vị trí cũ
         if (offset == Vector2Int.zero)
         {
             ResetGroup(draggedGroup);
             return;
         }
-
-        // 2. Kiểm tra xem Group chính có nhảy ra ngoài biên không
         if (!puzzle.CanMoveGroup(draggedGroup, offset))
         {
+            Debug.Log("Ra ngoài biên reset vị trí");
             ResetGroup(draggedGroup);
             return;
         }
-
-        // 3. Di chuyển nhóm với logic push - tự động xử lý swap với vị trí trống
         bool success = puzzle.MoveGroupWithPush(draggedGroup, offset);
-
         if (!success)
         {
-            // Di chuyển thất bại -> Reset về vị trí cũ
+            Debug.Log("Di chuyển thất bại reset vị trí");
             ResetGroup(draggedGroup);
         }
         else
         {
-            // Thành công -> Reset root về tâm
+            Debug.Log("Di chuyển thành công reset vị trí");
             rootRect.anchoredPosition = Vector2.zero;
         }
     }
-
     void ResetGroup(BlockGroup g)
     {
         foreach (var b in g.blocks)
