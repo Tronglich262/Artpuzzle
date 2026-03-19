@@ -16,6 +16,7 @@ public class InputSystem : MonoBehaviour
             LevelSystem.Instance.currentHintsUsed++;
         }
     }
+
     // Tự động giải một bước: chọn một block sai vị trí, nếu nó đang bị chặn bởi block khác thì đẩy block đó sang vị trí trống, sau đó đưa block về đúng vị trí
     public bool AutoSolveOneStep()
     {
@@ -47,7 +48,9 @@ public class InputSystem : MonoBehaviour
             }
             // Tìm 1 ô trống bất kỳ để đẩy kẻ chiếm chỗ sang đó
             Vector2Int emptySpot = PuzzleManager.Instance.GetEmptyPositions().FirstOrDefault();
-            blocker.gridPos = emptySpot;
+            Vector2Int tempPos = blocker.gridPos;
+            blocker.gridPos = targetBlock.gridPos;
+            targetBlock.gridPos = tempPos;
         }
         // 5. ĐƯA VỀ VỊ TRÍ ĐÚNG
         targetBlock.gridPos = destination;

@@ -77,10 +77,21 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         }
         else
         {
-            Debug.Log("Di chuyển thành công reset vị trí");
+            Debug.Log("Di chuyển thành công");
+
+            // Reset root
             rootRect.anchoredPosition = Vector2.zero;
+
+            // Cập nhật lại vị trí UI của từng block theo grid mới
+            foreach (var b in draggedGroup.blocks)
+            {
+                Vector2 newPos = puzzle.GridToPosition(b.gridPos);
+                b.targetPosition = newPos;
+                b.GetComponent<RectTransform>().anchoredPosition = newPos;
+            }
         }
     }
+
     void ResetGroup(BlockGroup g)
     {
         foreach (var b in g.blocks)

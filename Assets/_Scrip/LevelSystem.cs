@@ -17,9 +17,7 @@ public class LevelSystem : MonoBehaviour
         {
             NextLevel();
         }
-
     }
-
     public void NextLevel()
     {
         int nextIndex = PuzzleManager.Instance.currentLevelIndex + 1;

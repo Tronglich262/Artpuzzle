@@ -155,11 +155,20 @@ public class PuzzleManager : MonoBehaviour
                 hb.group.SplitByBlocks(new List<Block> { hb }, transform);
 
             hb.gridPos = hitMoves[hb];
+
         }
         foreach (var b in draggedGroup.blocks)
             b.gridPos = finalPositions[b];
         UpdateAllBlockPositions();
         CheckAndMergeGroups();
+        draggedGroup.root.SetAsLastSibling();
+        int topIndex = draggedGroup.root.GetSiblingIndex();
+        int currentIndex = topIndex - 1;
+        foreach (var hb in hitBlocks)
+        {
+            hb.group.root.SetSiblingIndex(currentIndex);
+            currentIndex--;
+        }
 
         return true;
     }
@@ -199,7 +208,10 @@ public class PuzzleManager : MonoBehaviour
         foreach (var b in currentBlocks)
         {
             b.targetPosition = GridToPosition(b.gridPos);
-            b.UpdateTransform();
+
+            b.GetComponent<RectTransform>()
+             .DOAnchorPos(b.targetPosition, 0.4f)
+             .SetEase(Ease.OutQuad);
         }
     }
     // Chuyển từ tọa độ lưới (row, col) sang vị trí thực tế trên
