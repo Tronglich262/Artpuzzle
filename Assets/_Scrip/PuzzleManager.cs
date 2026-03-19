@@ -48,7 +48,11 @@ public class PuzzleManager : MonoBehaviour
 
     private void LoadLevel(int index)
     {
-        if (levels == null || levels.Count == 0) return;
+        if (levels == null || levels.Count == 0)
+        {
+            Debug.Log("Level null or == 0");
+            return;
+        } 
 
         currentLevelIndex = index;
         PuzzleLevel data = levels[index];

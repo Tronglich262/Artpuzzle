@@ -24,7 +24,7 @@ public class BlockGroup
 
         // Cập nhật viền cho cả nhóm sau khi merge
         UpdateGroupVisuals();
-
+        DOTween.Kill(other.root);
         GameObject.Destroy(other.root.gameObject);
         other.blocks.Clear();
         foreach (var b in blocks) b.transform.localScale = Vector3.one;
