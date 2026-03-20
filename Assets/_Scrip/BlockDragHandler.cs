@@ -23,6 +23,12 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         block = GetComponent<Block>();
     }
 
+    /// <summary>
+    /// Khi bắt đầu nhấn vào block:
+    /// - Kiểm tra cooldown và trạng thái tween
+    /// - Bắt đầu drag
+    /// - Scale nhẹ group và đưa lên top UI
+    /// </summary>
     public void OnPointerDown(PointerEventData eventData)
     {
         if (puzzle.isTweening) return;
@@ -31,7 +37,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         lastInputTime = Time.time;
         isDragging = true;
 
-        // KHÓA NGAY
+        // khóa input
         puzzle.SetTweening(true);
 
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
@@ -50,6 +56,11 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         );
     }
 
+    /// <summary>
+    /// Khi đang kéo:
+    /// - Tính delta chuột
+    /// - Di chuyển group theo kiểu mượt (lerp)
+    /// </summary>
     public void OnDrag(PointerEventData eventData)
     {
         if (!isDragging) return;
@@ -67,8 +78,8 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
 
-        //  DRAG CÓ ĐỘ NẶNG
         Vector2 target = rootStartPos + delta;
+
         rootRect.anchoredPosition = Vector2.Lerp(
             rootRect.anchoredPosition,
             target,
@@ -76,12 +87,19 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         );
     }
 
+    /// <summary>
+    /// Khi thả chuột:
+    /// - Tính vị trí grid mới
+    /// - Thực hiện move + push
+    /// - Nếu fail → reset về vị trí cũ
+    /// </summary>
     public void OnPointerUp(PointerEventData eventData)
     {
         if (!isDragging) return;
         isDragging = false;
 
         BlockGroup draggedGroup = block.group;
+
         if (draggedGroup == null || draggedGroup.root == null)
         {
             puzzle.SetTweening(false);
@@ -99,6 +117,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         Vector2Int targetGrid = puzzle.PositionToGrid(worldPos);
         Vector2Int offset = targetGrid - block.gridPos;
 
+        // không di chuyển hoặc out map
         if (offset == Vector2Int.zero || !puzzle.CanMoveGroup(draggedGroup, offset))
         {
             ResetGroup(draggedGroup);
@@ -129,6 +148,11 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         }
     }
 
+    /// <summary>
+    /// Reset group về vị trí cũ nếu move thất bại:
+    /// - Animate từng block về targetPosition
+    /// - Mở lại input sau khi hoàn thành
+    /// </summary>
     void ResetGroup(BlockGroup g)
     {
         if (g == null) return;
@@ -151,7 +175,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
                 {
                     done++;
                     if (done >= total)
-                        puzzle.SetTweening(false); // mở đúng lúc
+                        puzzle.SetTweening(false);
                 });
         }
 
