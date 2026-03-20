@@ -219,32 +219,44 @@ public class PuzzleManager : MonoBehaviour
     // Cập nhật vị trí thực tế của tất cả block dựa trên gridPos của chúng
     public void UpdateAllBlockPositions(bool animate = true)
     {
-        if (!animate)
-        {
-            foreach (var b in currentBlocks)
-            {
-                b.targetPosition = GridToPosition(b.gridPos);
-                b.GetComponent<RectTransform>().anchoredPosition = b.targetPosition;
-            }
-            isTweening = false;
-            return;
-        }
-
-        isTweening = true; // Bắt đầu di chuyển
         int completedCount = 0;
 
         foreach (var b in currentBlocks)
         {
+            RectTransform rt = b.GetComponent<RectTransform>();
+
+            rt.DOKill();
+
             b.targetPosition = GridToPosition(b.gridPos);
-            b.GetComponent<RectTransform>()
-             .DOAnchorPos(b.targetPosition, 0.1f)
-             .SetEase(Ease.OutQuad)
-             .OnComplete(() =>
-             {
-                 completedCount++;
-                 if (completedCount >= currentBlocks.Count)
-                     isTweening = false; // Mở khóa khi tất cả đã xong
-             });
+
+            Vector2 snappedPos = new Vector2(
+                Mathf.Round(b.targetPosition.x),
+                Mathf.Round(b.targetPosition.y)
+            );
+
+            if (!animate)
+            {
+                rt.anchoredPosition = snappedPos;
+                continue;
+            }
+
+            rt.DOAnchorPos(snappedPos, 0.2f)
+              .SetEase(Ease.OutBack)
+              .OnComplete(() =>
+              {
+                  completedCount++;
+                  if (completedCount >= currentBlocks.Count)
+                      isTweening = false;
+              });
+        }
+
+        if (!animate)
+        {
+            isTweening = false;
+        }
+        else
+        {
+            isTweening = true;
         }
     }
     // Chuyển từ tọa độ lưới (row, col) sang vị trí thực tế trên
