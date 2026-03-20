@@ -2035,7 +2035,7 @@ MonoBehaviour:
   blockPrefab: {fileID: 2888490928715737953, guid: 4c154d29db088b447847626e0d76fc8c, type: 3}
   rows: 5
   cols: 5
-  blockSize: 185
+  blockSize: 180
   currentBlocks: []
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

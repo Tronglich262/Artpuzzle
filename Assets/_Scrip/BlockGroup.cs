@@ -10,6 +10,7 @@ public class BlockGroup
 
     public void Merge(BlockGroup other)
     {
+        root.SetAsLastSibling();
         foreach (var b in other.blocks)
         {
             b.group = this;
