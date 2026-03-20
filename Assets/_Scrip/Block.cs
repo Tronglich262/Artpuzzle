@@ -20,9 +20,14 @@ public class Block : MonoBehaviour
 
     public void UpdateTransform()
     {
+        RectTransform rt = GetComponent<RectTransform>();
+        if (rt == null) return;
+
         float duration = 0.05f;
-        GetComponent<RectTransform>()
-            .DOAnchorPos(targetPosition, duration)
+        rt.DOKill(true);
+        transform.DOKill(true);
+
+        rt.DOAnchorPos(targetPosition, duration)
             .SetEase(Ease.OutCubic);
 
         transform.DOScale(Vector3.one, duration);

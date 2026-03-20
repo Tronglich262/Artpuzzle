@@ -231,10 +231,14 @@ public class PuzzleManager : MonoBehaviour
     public void UpdateAllBlockPositions(bool animate = true)
     {
         int completedCount = 0;
+        int totalBlocks = currentBlocks.Count;
 
         foreach (var b in currentBlocks)
         {
+            if (b == null) continue;
+            
             RectTransform rt = b.GetComponent<RectTransform>();
+            if (rt == null) continue;
 
             rt.DOKill();
 
@@ -255,8 +259,10 @@ public class PuzzleManager : MonoBehaviour
               .SetEase(Ease.OutBack)
               .OnComplete(() =>
               {
+                  // Safety check in callback
+                  if (this == null) return;
                   completedCount++;
-                  if (completedCount >= currentBlocks.Count)
+                  if (completedCount >= totalBlocks)
                       isTweening = false;
               });
         }

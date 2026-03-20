@@ -10,30 +10,56 @@ public class BlockGroup
 
     public void Merge(BlockGroup other)
     {
+        if (other == null || other.root == null) return;
+        
         root.SetAsLastSibling();
+        
+        // Kill tweens on all blocks and the other root before modifying
         foreach (var b in other.blocks)
         {
+            if (b != null && b.img != null)
+            {
+                b.img.DOKill(true);
+            }
+        }
+        other.root.DOKill(true);
+        
+        foreach (var b in other.blocks)
+        {
+            if (b == null) continue;
             b.group = this;
             b.transform.SetParent(root, true);
             blocks.Add(b);
 
             b.img.DOColor(Color.white * 1.5f, 0.1f).OnComplete(() =>
             {
-                b.img.DOColor(Color.white, 0.2f);
+                if (b != null && b.img != null)
+                {
+                    b.img.DOColor(Color.white, 0.2f);
+                }
             });
         }
         // Cập nhật viền cho cả nhóm sau khi merge
         UpdateGroupVisuals();
+        
+        // Kill tweens on the old root before destroying
         DOTween.Kill(other.root);
         GameObject.Destroy(other.root.gameObject);
         other.blocks.Clear();
-        foreach (var b in blocks) b.transform.localScale = Vector3.one;
+        foreach (var b in blocks) 
+        {
+            if (b != null) b.transform.localScale = Vector3.one;
+        }
         root.localScale = Vector3.one;
+        
         root.DOScale(1.25f, 0.15f)
             .SetEase(Ease.OutQuad)
             .OnComplete(() =>
             {
-                root.DOScale(1f, 0.2f).SetEase(Ease.OutQuad);
+                if (root != null)
+                {
+                    root.DOScale(1f, 0.2f).SetEase(Ease.OutQuad);
+                }
             });
     }
 
@@ -142,6 +168,12 @@ public class BlockGroup
         var subgroups = GetConnectedSubgroups();
 
         if (subgroups.Count <= 1) return;
+
+        // Kill tweens on root before destroying
+        if (root != null)
+        {
+            root.DOKill(true);
+        }
 
         // Xóa group cũ
         var oldBlocks = new List<Block>(blocks);
