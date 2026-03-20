@@ -2036,6 +2036,7 @@ MonoBehaviour:
   rows: 5
   cols: 5
   blockSize: 180
+  boardRoot: {fileID: 2108406049}
   currentBlocks: []
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

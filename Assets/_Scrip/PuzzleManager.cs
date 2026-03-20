@@ -19,6 +19,7 @@ public class PuzzleManager : MonoBehaviour
     public bool isTweening { get; private set; } // Khóa trạng thái
 
     public void SetTweening(bool state) => isTweening = state;
+    [SerializeField] private RectTransform boardRoot;
 
 
     [HideInInspector]
@@ -46,7 +47,7 @@ public class PuzzleManager : MonoBehaviour
     //xoá block cũ , tạo block mới theo thông số level, gán sprite, tạo group mới cho từng block
     public void GeneratePuzzle()
     {
-        foreach (Transform child in transform) Destroy(child.gameObject);
+        foreach (Transform child in boardRoot) Destroy(child.gameObject);
         currentBlocks.Clear();
         Debug.Log("Clear image cũ");
 
@@ -54,24 +55,34 @@ public class PuzzleManager : MonoBehaviour
         {
             for (int c = 0; c < cols; c++)
             {
-                GameObject obj = Instantiate(blockPrefab, transform);
+                GameObject obj = Instantiate(blockPrefab, boardRoot);
+
                 Block b = obj.GetComponent<Block>();
                 b.gridPos = new Vector2Int(r, c);
                 b.correctPos = new Vector2Int(r, c);
 
                 SetupBlockVisual(obj, r, c);
                 currentBlocks.Add(b);
-                // Khởi tạo Group
+
+                // Tạo group root đúng chuẩn UI
                 BlockGroup g = new BlockGroup();
                 GameObject rootObj = new GameObject("GroupRoot", typeof(RectTransform));
-                g.root = rootObj.transform;
-                g.root.SetParent(this.transform, false);
+
+                RectTransform rootRect = rootObj.GetComponent<RectTransform>();
+                rootRect.SetParent(boardRoot, false);
+                rootRect.localScale = Vector3.one;
+                rootRect.anchoredPosition = Vector2.zero;
+
+                g.root = rootRect;
+
                 b.group = g;
                 g.blocks.Add(b);
-                b.transform.SetParent(g.root);
+                b.transform.SetParent(g.root, false);
+
                 b.SetOutline(true);
             }
         }
+
         Debug.Log("Load Level mới");
         UpdateAllBlockPositions();
     }

@@ -12,6 +12,9 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
     private Vector2 pointerStart;
     private Vector2 rootStartPos;
+    //coudow image 
+    private float lastInputTime = -1f;
+    [SerializeField] private float inputCooldown = 0.3f;
 
     void Start()
     {
@@ -21,12 +24,16 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     }
     public void OnPointerDown(PointerEventData eventData)
     {
-
         if (puzzle.isTweening) return;
+        if (Time.time - lastInputTime < inputCooldown) return;
+        lastInputTime = Time.time;
+
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
         rootRect.SetAsLastSibling();
         rootRect.DOScale(1.1f, 0.1f).SetEase(Ease.OutQuad);
+
         rootStartPos = rootRect.anchoredPosition;
+
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             canvas.GetComponent<RectTransform>(),
             eventData.position,
