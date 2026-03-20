@@ -16,7 +16,7 @@ public class PuzzleManager : MonoBehaviour
     [SerializeField] public int rows = 3;
     [SerializeField] public int cols = 3;
     [SerializeField] public float blockSize = 100f;
-    public bool isTweening { get; private set; } // Khóa trạng thái
+    public bool isTweening { get; private set; }
 
     public void SetTweening(bool state) => isTweening = state;
     [SerializeField] private RectTransform boardRoot;
@@ -256,7 +256,7 @@ public class PuzzleManager : MonoBehaviour
             }
             //tốc độ swap image
             rt.DOAnchorPos(snappedPos, 0.5f)
-              .SetEase(Ease.OutQuad)
+              .SetEase(Ease.OutCubic)
               .OnComplete(() =>
               {
                   // Safety check in callback
