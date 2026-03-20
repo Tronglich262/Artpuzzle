@@ -26,7 +26,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         if (puzzle.isTweening) return;
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
         rootRect.SetAsLastSibling();
-        rootRect.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad);
+        rootRect.DOScale(1.1f, 0.1f).SetEase(Ease.OutQuad);
         rootStartPos = rootRect.anchoredPosition;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             canvas.GetComponent<RectTransform>(),
@@ -93,6 +93,9 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
                 b.targetPosition = newPos;
                 b.GetComponent<RectTransform>().anchoredPosition = newPos;
             }
+
+            // Cho phép swap tiếp ngay lập tức (không cần đợi animation)
+            puzzle.SetTweening(false);
         }
     }
 
@@ -102,7 +105,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         int count = 0;
         foreach (var b in g.blocks)
         {
-            b.GetComponent<RectTransform>().DOAnchorPos(b.targetPosition, 0.2f)
+            b.GetComponent<RectTransform>().DOAnchorPos(b.targetPosition, 0.05f)
                 .OnComplete(() =>
                 {
                     count++;

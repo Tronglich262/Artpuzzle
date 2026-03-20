@@ -20,7 +20,7 @@ public class Block : MonoBehaviour
 
     public void UpdateTransform()
     {
-        float duration = 0.2f;
+        float duration = 0.05f;
         GetComponent<RectTransform>()
             .DOAnchorPos(targetPosition, duration)
             .SetEase(Ease.OutCubic);

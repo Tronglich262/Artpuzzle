@@ -87,7 +87,7 @@ public class PuzzleManager : MonoBehaviour
         b.img.sprite = Sprite.Create(sourceImage.texture, rect, new Vector2(0.5f, 0.5f));
     }
     // Di chuyển nhóm block được kéo, nếu có block nào bị chặn sẽ tìm vị trí trống gần nhất để đẩy chúng đi
-    public bool MoveGroupWithPush(BlockGroup draggedGroup, Vector2Int offset)
+    public bool MoveGroupWithPush(BlockGroup draggedGroup, Vector2Int offset, bool animate = true)
     {
         var finalPositions = new Dictionary<Block, Vector2Int>(draggedGroup.blocks.Count);
         var occupied = new HashSet<Vector2Int>();
@@ -163,7 +163,7 @@ public class PuzzleManager : MonoBehaviour
         }
         foreach (var b in draggedGroup.blocks)
             b.gridPos = finalPositions[b];
-        UpdateAllBlockPositions();
+        UpdateAllBlockPositions(animate);
         CheckAndMergeGroups();
         //tach grouproot
         var allGroups = currentBlocks
@@ -217,8 +217,19 @@ public class PuzzleManager : MonoBehaviour
         return gridDiff == (a.correctPos - b.correctPos);
     }
     // Cập nhật vị trí thực tế của tất cả block dựa trên gridPos của chúng
-    public void UpdateAllBlockPositions()
+    public void UpdateAllBlockPositions(bool animate = true)
     {
+        if (!animate)
+        {
+            foreach (var b in currentBlocks)
+            {
+                b.targetPosition = GridToPosition(b.gridPos);
+                b.GetComponent<RectTransform>().anchoredPosition = b.targetPosition;
+            }
+            isTweening = false;
+            return;
+        }
+
         isTweening = true; // Bắt đầu di chuyển
         int completedCount = 0;
 
@@ -226,7 +237,7 @@ public class PuzzleManager : MonoBehaviour
         {
             b.targetPosition = GridToPosition(b.gridPos);
             b.GetComponent<RectTransform>()
-             .DOAnchorPos(b.targetPosition, 0.4f)
+             .DOAnchorPos(b.targetPosition, 0.1f)
              .SetEase(Ease.OutQuad)
              .OnComplete(() =>
              {
