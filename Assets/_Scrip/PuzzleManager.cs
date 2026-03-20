@@ -236,7 +236,7 @@ public class PuzzleManager : MonoBehaviour
         foreach (var b in currentBlocks)
         {
             if (b == null) continue;
-            
+
             RectTransform rt = b.GetComponent<RectTransform>();
             if (rt == null) continue;
 
@@ -254,9 +254,9 @@ public class PuzzleManager : MonoBehaviour
                 rt.anchoredPosition = snappedPos;
                 continue;
             }
-
-            rt.DOAnchorPos(snappedPos, 0.2f)
-              .SetEase(Ease.OutBack)
+            //tốc độ swap image
+            rt.DOAnchorPos(snappedPos, 0.5f)
+              .SetEase(Ease.OutQuad)
               .OnComplete(() =>
               {
                   // Safety check in callback
