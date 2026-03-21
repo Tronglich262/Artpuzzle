@@ -154,7 +154,7 @@ public class PuzzleManager : MonoBehaviour
 
         if (canSwap)
         {
-            // Sort để mapping ổn định (có thể đổi sang correctPos nếu cần chuẩn hơn)
+            // Sort để mapping ổn định
             var draggedSorted = draggedGroup.blocks
                 .OrderBy(b => b.gridPos.x)
                 .ThenBy(b => b.gridPos.y)
@@ -195,14 +195,14 @@ public class PuzzleManager : MonoBehaviour
                 Vector2Int bestSpot = default;
                 bool found = false;
 
-                // ===== 1. CỘT (ưu tiên tuyệt đối, không cần gần) =====
+                // ===== 1. CỘT
                 var sameColumn = available
                     .Where(pos => pos.y == hb.gridPos.y && !used.Contains(pos))
                     .ToList();
 
                 if (sameColumn.Count > 0)
                 {
-                    // chọn bất kỳ (hoặc top-down nếu muốn ổn định)
+                    // chọn bất kỳ 
                     bestSpot = sameColumn[0];
                     found = true;
                 }
