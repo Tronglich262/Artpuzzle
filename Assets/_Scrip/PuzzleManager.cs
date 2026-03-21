@@ -135,61 +135,130 @@ public class PuzzleManager : MonoBehaviour
             occupied.Add(target);
         }
 
+        // ===== LẤY BLOCK BỊ ĐỤNG =====
         var hitBlocks = new List<Block>();
-        foreach (var b in currentBlocks)
-        {
-            if (b.group != draggedGroup && occupied.Contains(b.gridPos))
-                hitBlocks.Add(b);
-        }
-
-        var available = new List<Vector2Int>(GetEmptyPositions());
 
         foreach (var b in draggedGroup.blocks)
-            available.Add(b.gridPos);
-
-        available.RemoveAll(pos => occupied.Contains(pos));
-
-        var used = new HashSet<Vector2Int>();
-        var hitMoves = new Dictionary<Block, Vector2Int>(hitBlocks.Count);
-
-        foreach (var hb in hitBlocks)
         {
-            float bestDist = float.MaxValue;
-            Vector2Int bestSpot = default;
-            bool found = false;
+            var target = b.gridPos + offset;
 
-            for (int i = 0; i < available.Count; i++)
+            var hit = currentBlocks.FirstOrDefault(x =>
+                x.group != draggedGroup && x.gridPos == target);
+
+            if (hit != null)
+                hitBlocks.Add(hit);
+        }
+
+        // ===== CHECK SWAP =====
+        bool canSwap = hitBlocks.Count == draggedGroup.blocks.Count;
+
+        if (canSwap)
+        {
+            // Sort để mapping ổn định (có thể đổi sang correctPos nếu cần chuẩn hơn)
+            var draggedSorted = draggedGroup.blocks
+                .OrderBy(b => b.gridPos.x)
+                .ThenBy(b => b.gridPos.y)
+                .ToList();
+
+            var hitSorted = hitBlocks
+                .OrderBy(b => b.gridPos.x)
+                .ThenBy(b => b.gridPos.y)
+                .ToList();
+
+            // ===== SWAP 1-1 =====
+            for (int i = 0; i < draggedSorted.Count; i++)
             {
-                var pos = available[i];
-                if (used.Contains(pos)) continue;
+                var a = draggedSorted[i];
+                var b = hitSorted[i];
 
-                float dist = (hb.gridPos - pos).sqrMagnitude;
+                Vector2Int temp = a.gridPos;
+                a.gridPos = b.gridPos;
+                b.gridPos = temp;
+            }
+        }
+        else
+        {
+            // ===== PUSH LOGIC (fallback) =====
 
-                if (dist < bestDist)
+            var available = new List<Vector2Int>(GetEmptyPositions());
+
+            foreach (var b in draggedGroup.blocks)
+                available.Add(b.gridPos);
+
+            available.RemoveAll(pos => occupied.Contains(pos));
+
+            var used = new HashSet<Vector2Int>();
+            var hitMoves = new Dictionary<Block, Vector2Int>(hitBlocks.Count);
+
+            foreach (var hb in hitBlocks)
+            {
+                Vector2Int bestSpot = default;
+                bool found = false;
+
+                // ===== 1. CỘT (ưu tiên tuyệt đối, không cần gần) =====
+                var sameColumn = available
+                    .Where(pos => pos.y == hb.gridPos.y && !used.Contains(pos))
+                    .ToList();
+
+                if (sameColumn.Count > 0)
                 {
-                    bestDist = dist;
-                    bestSpot = pos;
+                    // chọn bất kỳ (hoặc top-down nếu muốn ổn định)
+                    bestSpot = sameColumn[0];
                     found = true;
                 }
+                else
+                {
+                    // ===== 2. HÀNG (ưu tiên tuyệt đối) =====
+                    var sameRow = available
+                        .Where(pos => pos.x == hb.gridPos.x && !used.Contains(pos))
+                        .ToList();
+
+                    if (sameRow.Count > 0)
+                    {
+                        bestSpot = sameRow[0];
+                        found = true;
+                    }
+                    else
+                    {
+                        // ===== 3. NEAREST =====
+                        float bestDist = float.MaxValue;
+
+                        foreach (var pos in available)
+                        {
+                            if (used.Contains(pos)) continue;
+
+                            float dist = (hb.gridPos - pos).sqrMagnitude;
+
+                            if (dist < bestDist)
+                            {
+                                bestDist = dist;
+                                bestSpot = pos;
+                                found = true;
+                            }
+                        }
+                    }
+                }
+
+                if (!found) return false;
+
+                hitMoves[hb] = bestSpot;
+                used.Add(bestSpot);
             }
 
-            if (!found) return false;
+            foreach (var hb in hitBlocks)
+            {
+                if (hb.group.blocks.Count > 1)
+                    hb.group.SplitByBlocks(new List<Block> { hb }, transform);
 
-            hitMoves[hb] = bestSpot;
-            used.Add(bestSpot);
+                hb.gridPos = hitMoves[hb];
+            }
+
+            // dragged group move theo offset (chỉ khi push)
+            foreach (var b in draggedGroup.blocks)
+                b.gridPos = finalPositions[b];
         }
 
-        foreach (var hb in hitBlocks)
-        {
-            if (hb.group.blocks.Count > 1)
-                hb.group.SplitByBlocks(new List<Block> { hb }, transform);
-
-            hb.gridPos = hitMoves[hb];
-        }
-
-        foreach (var b in draggedGroup.blocks)
-            b.gridPos = finalPositions[b];
-
+        // ===== UPDATE UI =====
         UpdateAllBlockPositions(animate);
         CheckAndMergeGroups();
 
@@ -203,6 +272,7 @@ public class PuzzleManager : MonoBehaviour
             g.SplitIfDisconnected(transform);
         }
 
+        // ===== SORT LAYER =====
         draggedGroup.root.SetAsLastSibling();
 
         int topIndex = draggedGroup.root.GetSiblingIndex();
@@ -210,8 +280,11 @@ public class PuzzleManager : MonoBehaviour
 
         foreach (var hb in hitBlocks)
         {
-            hb.group.root.SetSiblingIndex(currentIndex);
-            currentIndex--;
+            if (hb != null && hb.group != null && hb.group.root != null)
+            {
+                hb.group.root.SetSiblingIndex(currentIndex);
+                currentIndex--;
+            }
         }
 
         return true;

@@ -27,7 +27,7 @@ public class Block : MonoBehaviour
         rt.DOKill(true);
         transform.DOKill(true);
 
-        rt.DOMove(targetPosition, duration)
+        rt.DOAnchorPos(targetPosition, duration)
             .SetEase(Ease.OutCubic);
 
         transform.DOScale(Vector3.one, duration);
