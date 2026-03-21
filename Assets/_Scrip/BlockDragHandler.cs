@@ -37,12 +37,12 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         lastInputTime = Time.time;
         isDragging = true;
 
-        // khóa input
         puzzle.SetTweening(true);
 
         RectTransform rootRect = block.group.root.GetComponent<RectTransform>();
+        rootRect.DOKill();
+        rootRect.localScale = Vector3.one;
 
-        rootRect.DOKill(true);
         rootRect.SetAsLastSibling();
         rootRect.DOScale(1.1f, 0.1f).SetEase(Ease.OutQuad);
 
@@ -55,7 +55,6 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             out pointerStart
         );
     }
-
     /// <summary>
     /// Khi đang kéo:
     /// - Tính delta chuột
@@ -107,9 +106,11 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         }
 
         RectTransform rootRect = draggedGroup.root.GetComponent<RectTransform>();
-
-        rootRect.DOKill(true);
-        rootRect.DOScale(1f, 0.15f);
+        rootRect.DOKill();
+        rootRect.DOScale(1f, 0.15f)
+            .SetEase(Ease.OutQuad)
+            .OnKill(() => rootRect.localScale = Vector3.one)
+            .OnComplete(() => rootRect.localScale = Vector3.one);
 
         RectTransform blockRect = block.GetComponent<RectTransform>();
 
@@ -117,13 +118,11 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         Vector2Int targetGrid = puzzle.PositionToGrid(worldPos);
         Vector2Int offset = targetGrid - block.gridPos;
 
-        // không di chuyển hoặc out map
         if (offset == Vector2Int.zero || !puzzle.CanMoveGroup(draggedGroup, offset))
         {
             ResetGroup(draggedGroup);
             return;
         }
-
         bool success = puzzle.MoveGroupWithPush(draggedGroup, offset);
 
         if (!success)
@@ -147,7 +146,6 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             }
         }
     }
-
     /// <summary>
     /// Reset group về vị trí cũ nếu move thất bại:
     /// - Animate từng block về targetPosition
@@ -176,15 +174,17 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
                     done++;
                     if (done >= total)
                         puzzle.SetTweening(false);
-                    Debug.Log("Reset vị trí khi k đúng swap");
                 });
         }
-
         if (g.root != null)
         {
             RectTransform rootRt = g.root.GetComponent<RectTransform>();
             if (rootRt != null)
+            {
+                rootRt.DOKill();
+                rootRt.localScale = Vector3.one;
                 rootRt.anchoredPosition = Vector2.zero;
+            }
         }
     }
 }
