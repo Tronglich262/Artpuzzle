@@ -83,7 +83,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         rootRect.anchoredPosition = Vector2.Lerp(
             rootRect.anchoredPosition,
             target,
-            0.25f
+            2f
         );
     }
 
@@ -176,6 +176,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
                     done++;
                     if (done >= total)
                         puzzle.SetTweening(false);
+                    Debug.Log("Reset vị trí khi k đúng swap");
                 });
         }
 
