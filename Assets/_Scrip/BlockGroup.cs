@@ -52,7 +52,7 @@ public class BlockGroup
         }
         root.localScale = Vector3.one;
         
-        root.DOScale(1.25f, 0.15f)
+        root.DOScale(1.1f, 0.15f)
             .SetEase(Ease.OutQuad)
             .OnComplete(() =>
             {
@@ -149,8 +149,10 @@ public class BlockGroup
                 {
                     Vector2Int neighborPos = current.gridPos + d;
 
-                    var neighbor = blocks.FirstOrDefault(b => b.gridPos == neighborPos);
-                    if (neighbor != null && !visited.Contains(neighbor))
+                    var neighbor = blocks.FirstOrDefault(b =>
+                        b.gridPos == neighborPos &&
+                        PuzzleManager.Instance.IsCorrectNeighbor(current, b)
+                    ); if (neighbor != null && !visited.Contains(neighbor))
                     {
                         visited.Add(neighbor);
                         q.Enqueue(neighbor);
@@ -198,4 +200,5 @@ public class BlockGroup
 
         GameObject.Destroy(root.gameObject);
     }
+
 }

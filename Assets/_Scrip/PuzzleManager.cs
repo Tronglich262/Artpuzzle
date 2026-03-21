@@ -260,6 +260,8 @@ public class PuzzleManager : MonoBehaviour
 
         // ===== UPDATE UI =====
         UpdateAllBlockPositions(animate);
+        ValidateAllGroups();
+
         CheckAndMergeGroups();
 
         var allGroups = currentBlocks
@@ -323,7 +325,7 @@ public class PuzzleManager : MonoBehaviour
     /// <summary>
     /// Kiểm tra hai block có phải là hàng xóm đúng.
     /// </summary>
-    bool IsCorrectNeighbor(Block a, Block b)
+    public bool IsCorrectNeighbor(Block a, Block b)
     {
         Vector2Int gridDiff = a.gridPos - b.gridPos;
         if (gridDiff.sqrMagnitude != 1) return false;
@@ -451,5 +453,30 @@ public class PuzzleManager : MonoBehaviour
         }
 
         return true;
+    }
+    public void ValidateAllGroups()
+    {
+        var groups = currentBlocks
+            .Select(b => b.group)
+            .Distinct()
+            .ToList();
+
+        foreach (var g in groups)
+        {
+            var blocksCopy = new List<Block>(g.blocks);
+
+            foreach (var b in blocksCopy)
+            {
+                bool hasCorrectNeighbor = blocksCopy.Any(other =>
+                    other != b && IsCorrectNeighbor(b, other)
+                );
+
+                // nếu không có neighbor đúng → tách ra
+                if (!hasCorrectNeighbor && blocksCopy.Count > 1)
+                {
+                    g.SplitByBlocks(new List<Block> { b }, transform);
+                }
+            }
+        }
     }
 }
