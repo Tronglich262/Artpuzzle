@@ -52,7 +52,7 @@ public class BlockGroup
         }
         root.localScale = Vector3.one;
         //để 1.1 thì sẽ không lỗi , để 1.25 thì lỗi ( image treo 1.25 k về 1. )
-        root.DOScale(1.25f, 0.5f)
+        root.DOScale(1.1f, 0.2f)
             .SetEase(Ease.OutQuad)
             .OnComplete(() =>
             {
