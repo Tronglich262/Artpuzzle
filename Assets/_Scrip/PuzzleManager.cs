@@ -261,9 +261,7 @@ public class PuzzleManager : MonoBehaviour
         // ===== UPDATE UI =====
         UpdateAllBlockPositions(animate);
         ValidateAllGroups();
-
-        CheckAndMergeGroups();
-
+        Invoke(nameof(CheckAndMergeGroups), 0.2f);
         var allGroups = currentBlocks
             .Select(b => b.group)
             .Distinct()
