@@ -15,6 +15,9 @@ public class Block : MonoBehaviour
     private RectTransform cachedRectTransform;
     private Transform cachedTransform;
 
+    /// <summary>
+    /// Cache component để dùng nhanh hơn.
+    /// </summary>
     private void Awake()
     {
         cachedOutline = GetComponent<Outline>();
@@ -25,6 +28,9 @@ public class Block : MonoBehaviour
             img = GetComponent<Image>();
     }
 
+    /// <summary>
+    /// Bật/tắt outline của block.
+    /// </summary>
     public void SetOutline(bool active)
     {
         if (cachedOutline != null)
@@ -32,8 +38,8 @@ public class Block : MonoBehaviour
     }
 
     /// <summary>
-    /// Cập nhật vị trí của block theo targetPosition.
-    /// Chỉ reset scale nếu đang lệch đáng kể để tránh đạp vào visual state khác.
+    /// Tween block tới targetPosition.
+    /// Có thể reset scale về 1 nếu cần.
     /// </summary>
     public void UpdateTransform(float duration = 0.05f, bool resetScale = true)
     {

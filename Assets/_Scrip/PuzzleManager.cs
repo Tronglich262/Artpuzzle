@@ -16,13 +16,16 @@ public class PuzzleManager : MonoBehaviour
     [SerializeField] public float blockSize = 100f;
     [SerializeField] private RectTransform boardRoot;
 
-    // Đánh dấu hệ thống đang tween để chặn input liên tiếp
+    // Đánh dấu đang tween để chặn input liên tiếp
     public bool isTweening { get; private set; }
     public void SetTweening(bool state) => isTweening = state;
-    // Danh sách toàn bộ block hiện có trên board
+
+    // Toàn bộ block hiện có trên board
     [HideInInspector] public List<Block> currentBlocks = new();
-    // Ma trận lưu trạng thái board theo grid
+
+    // Grid logic của board
     private Block[,] grid;
+
     public static PuzzleManager Instance { get; private set; }
 
     // 4 hướng cơ bản để check neighbor
@@ -33,11 +36,6 @@ public class PuzzleManager : MonoBehaviour
         Vector2Int.left,
         Vector2Int.right
     };
-
-    /// <summary>
-    /// Khởi tạo singleton.
-    /// Nếu đã có instance khác thì destroy object hiện tại.
-    /// </summary>
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -50,7 +48,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Tạo puzzle ban đầu và shuffle vị trí block.
+    /// Tạo puzzle và shuffle lúc bắt đầu game.
     /// </summary>
     private void Start()
     {
@@ -59,9 +57,8 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Tạo toàn bộ block theo rows/cols từ source image.
-    /// Mỗi block ban đầu có correctPos và gridPos trùng nhau.
-    /// Đồng thời tạo mỗi block nằm trong 1 group riêng.
+    /// Tạo toàn bộ block theo rows/cols.
+    /// Mỗi block ban đầu có 1 group riêng.
     /// </summary>
     public void GeneratePuzzle()
     {
@@ -89,8 +86,10 @@ public class PuzzleManager : MonoBehaviour
                 BlockGroup group = CreateSingleBlockGroup();
                 block.group = group;
                 group.blocks.Add(block);
+
                 block.transform.SetParent(group.root, false);
                 block.SetOutline(true);
+                group.RebuildLocalLayout(true);
             }
         }
 
@@ -98,16 +97,21 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Tạo 1 group mới chỉ chứa 1 block.
-    /// Mỗi group có root riêng để drag/move theo nhóm.
+    /// Tạo 1 group mới có root riêng.
+    /// Root này dùng để kéo cả cụm block.
     /// </summary>
     private BlockGroup CreateSingleBlockGroup()
     {
         var group = new BlockGroup();
 
-        GameObject rootObj = new("GroupRoot", typeof(RectTransform));
+        GameObject rootObj = new GameObject("GroupRoot", typeof(RectTransform));
         RectTransform rootRect = rootObj.GetComponent<RectTransform>();
+
         rootRect.SetParent(boardRoot, false);
+        rootRect.anchorMin = new Vector2(0.5f, 0.5f);
+        rootRect.anchorMax = new Vector2(0.5f, 0.5f);
+        rootRect.pivot = new Vector2(0.5f, 0.5f);
+        rootRect.sizeDelta = Vector2.zero;
         rootRect.localScale = Vector3.one;
         rootRect.anchoredPosition = Vector2.zero;
 
@@ -116,8 +120,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Cắt sprite con từ ảnh gốc theo vị trí row/col
-    /// rồi gán cho block tương ứng.
+    /// Cắt sprite con từ ảnh gốc theo row/col rồi gán cho block.
     /// </summary>
     private void SetupBlockVisual(Block block, int row, int col)
     {
@@ -126,7 +129,7 @@ public class PuzzleManager : MonoBehaviour
         int spriteW = texW / cols;
         int spriteH = texH / rows;
 
-        Rect rect = new(
+        Rect rect = new Rect(
             col * spriteW,
             texH - (row + 1) * spriteH,
             spriteW,
@@ -137,18 +140,17 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Xử lý move chính của 1 group:
-    /// 1. Tính vị trí đích
-    /// 2. Tìm block va chạm
-    /// 3. Thử swap
-    /// 4. Nếu không swap được thì push
-    /// 5. Cập nhật grid, position, group merge/split
+    /// Move chính của group:
+    /// - tính target
+    /// - thử swap
+    /// - nếu không swap thì push
+    /// - rebuild grid, split/merge, rồi update UI
     /// </summary>
     public bool MoveGroupWithPush(
-    BlockGroup draggedGroup,
-    Vector2Int offset,
-    BlockDragHandler.DragMoveType moveType,
-    bool animate = true)
+        BlockGroup draggedGroup,
+        Vector2Int offset,
+        BlockDragHandler.DragMoveType moveType,
+        bool animate = true)
     {
         if (draggedGroup == null || draggedGroup.blocks.Count == 0)
             return false;
@@ -157,9 +159,9 @@ public class PuzzleManager : MonoBehaviour
         if (draggedBlocks.Count == 0)
             return false;
 
-        HashSet<Block> draggedSet = new(draggedBlocks);
-        Dictionary<Block, Vector2Int> finalPositions = new(draggedBlocks.Count);
-        HashSet<Vector2Int> occupiedTargets = new();
+        HashSet<Block> draggedSet = new HashSet<Block>(draggedBlocks);
+        Dictionary<Block, Vector2Int> finalPositions = new Dictionary<Block, Vector2Int>(draggedBlocks.Count);
+        HashSet<Vector2Int> occupiedTargets = new HashSet<Vector2Int>();
 
         for (int i = 0; i < draggedBlocks.Count; i++)
         {
@@ -188,6 +190,7 @@ public class PuzzleManager : MonoBehaviour
 
             ApplyDraggedPositions(draggedBlocks, finalPositions);
         }
+
         RebuildGridFromBlocksStrict();
         ValidateAllGroups();
         SplitDisconnectedGroups();
@@ -200,30 +203,32 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Lọc ra các block hợp lệ khác null từ 1 list.
+    /// Lọc block khác null từ list đầu vào.
     /// </summary>
     private List<Block> GetValidBlocks(List<Block> source)
     {
-        List<Block> result = new(source.Count);
+        List<Block> result = new List<Block>(source.Count);
+
         for (int i = 0; i < source.Count; i++)
         {
             if (source[i] != null)
                 result.Add(source[i]);
         }
+
         return result;
     }
 
     /// <summary>
-    /// Lấy danh sách các block bị group đang drag đụng vào ở vị trí target.
-    /// Không lấy block nằm trong cùng group đang drag.
+    /// Lấy các block bị group đang kéo đụng vào ở vị trí đích.
+    /// Không lấy block nằm trong chính group đang kéo.
     /// </summary>
     private List<Block> CollectHitBlocks(
         List<Block> draggedBlocks,
         HashSet<Block> draggedSet,
         Dictionary<Block, Vector2Int> finalPositions)
     {
-        List<Block> hitBlocks = new();
-        HashSet<Block> hitSet = new();
+        List<Block> hitBlocks = new List<Block>();
+        HashSet<Block> hitSet = new HashSet<Block>();
 
         for (int i = 0; i < draggedBlocks.Count; i++)
         {
@@ -241,8 +246,8 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Thử swap block-by-block giữa group kéo và block ở vị trí đích.
-    /// Chỉ thành công khi mọi target đều có block khác hợp lệ để swap.
+    /// Thử swap block-by-block.
+    /// Chỉ thành công khi mọi target đều có block hợp lệ để đổi chỗ.
     /// </summary>
     private bool TrySwapBlocks(
         List<Block> draggedBlocks,
@@ -252,10 +257,9 @@ public class PuzzleManager : MonoBehaviour
         if (draggedBlocks.Count == 0)
             return false;
 
-        List<(Block dragged, Block hit)> pairs = new(draggedBlocks.Count);
-        HashSet<Block> usedHits = new();
+        List<(Block dragged, Block hit)> pairs = new List<(Block dragged, Block hit)>(draggedBlocks.Count);
+        HashSet<Block> usedHits = new HashSet<Block>();
 
-        // Kiểm tra điều kiện swap hợp lệ
         for (int i = 0; i < draggedBlocks.Count; i++)
         {
             Block dragged = draggedBlocks[i];
@@ -267,7 +271,6 @@ public class PuzzleManager : MonoBehaviour
             pairs.Add((dragged, hit));
         }
 
-        // Đổi chỗ gridPos giữa từng cặp block
         for (int i = 0; i < pairs.Count; i++)
         {
             var pair = pairs[i];
@@ -280,8 +283,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Gán gridPos mới cho toàn bộ block đang drag
-    /// sau khi push thành công hoặc move thường.
+    /// Gán gridPos mới cho toàn bộ block đang kéo.
     /// </summary>
     private void ApplyDraggedPositions(List<Block> draggedBlocks, Dictionary<Block, Vector2Int> finalPositions)
     {
@@ -293,9 +295,8 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Đẩy các block bị va chạm sang ô trống phù hợp.
-    /// Ưu tiên theo hướng kéo (ngang, dọc, chéo).
-    /// Nếu block hit đang nằm trong group > 1 block thì tách ra trước khi đẩy.
+    /// Đẩy block bị va chạm sang ô trống phù hợp.
+    /// Nếu block đang thuộc group lớn thì tách ra trước khi đẩy.
     /// </summary>
     private bool PushHitBlocks(
         List<Block> hitBlocks,
@@ -303,9 +304,9 @@ public class PuzzleManager : MonoBehaviour
         HashSet<Vector2Int> occupiedTargets,
         BlockDragHandler.DragMoveType moveType)
     {
-        HashSet<Vector2Int> available = new(GetEmptyPositions());
+        HashSet<Vector2Int> available = new HashSet<Vector2Int>(GetEmptyPositions());
 
-        // Cho phép dùng vị trí cũ của group kéo làm chỗ chứa block bị push
+        // Cho phép dùng vị trí cũ của group kéo làm chỗ chứa
         for (int i = 0; i < draggedGroup.blocks.Count; i++)
         {
             Block block = draggedGroup.blocks[i];
@@ -313,14 +314,13 @@ public class PuzzleManager : MonoBehaviour
                 available.Add(block.gridPos);
         }
 
-        // Loại bỏ các ô mà group kéo sẽ chiếm sau cùng
+        // Loại bỏ các ô group kéo sẽ chiếm
         foreach (Vector2Int pos in occupiedTargets)
             available.Remove(pos);
 
-        HashSet<Vector2Int> used = new();
-        Dictionary<Block, Vector2Int> hitMoves = new();
+        HashSet<Vector2Int> used = new HashSet<Vector2Int>();
+        Dictionary<Block, Vector2Int> hitMoves = new Dictionary<Block, Vector2Int>();
 
-        // Tìm vị trí push tốt nhất cho từng block bị đụng
         for (int i = 0; i < hitBlocks.Count; i++)
         {
             Block hit = hitBlocks[i];
@@ -333,7 +333,6 @@ public class PuzzleManager : MonoBehaviour
             used.Add(bestSpot);
         }
 
-        // Apply vị trí push
         for (int i = 0; i < hitBlocks.Count; i++)
         {
             Block hit = hitBlocks[i];
@@ -349,8 +348,8 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Tìm ô push tốt nhất cho 1 block.
-    /// Ưu tiên ô đúng cùng hướng drag, nếu không có thì lấy ô gần nhất còn lại.
+    /// Tìm ô trống tốt nhất để push.
+    /// Ưu tiên ô cùng hướng kéo, nếu không có thì lấy ô gần nhất.
     /// </summary>
     private bool TryFindBestPushSpot(
         Vector2Int origin,
@@ -394,10 +393,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Kiểm tra 2 ô có cùng trục ưu tiên theo kiểu kéo hay không.
-    /// Horizontal: cùng hàng
-    /// Vertical: cùng cột
-    /// Diagonal: cùng đường chéo
+    /// Check target có đúng hướng kéo hay không.
     /// </summary>
     private bool MatchMoveType(Vector2Int origin, Vector2Int target, BlockDragHandler.DragMoveType moveType)
     {
@@ -411,8 +407,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Quét toàn bộ block để merge các group nếu có 2 block
-    /// đang đứng cạnh nhau đúng theo correctPos gốc.
+    /// Quét toàn bộ board để merge group nếu 2 block đang đứng cạnh nhau đúng.
     /// </summary>
     public void CheckAndMergeGroups()
     {
@@ -446,10 +441,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Kiểm tra 2 block có phải hàng xóm đúng theo ảnh gốc hay không.
-    /// Điều kiện:
-    /// - đang đứng cạnh nhau trên grid
-    /// - độ lệch hiện tại giống độ lệch correctPos
+    /// Check 2 block có là hàng xóm đúng theo ảnh gốc không.
     /// </summary>
     public bool IsCorrectNeighbor(Block a, Block b)
     {
@@ -458,12 +450,11 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Lấy các block hàng xóm đúng của current trong cùng 1 group.
-    /// Dùng để validate hoặc split group.
+    /// Lấy các block hàng xóm đúng của current trong cùng group.
     /// </summary>
     public List<Block> GetCorrectNeighborsInSameGroup(Block current, BlockGroup group)
     {
-        List<Block> result = new(4);
+        List<Block> result = new List<Block>(4);
 
         if (current == null || group == null)
             return result;
@@ -479,45 +470,50 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Cập nhật vị trí UI của tất cả block theo gridPos.
-    /// Nếu animate = true thì tween về đúng ô.
-    /// Nếu animate = false thì set luôn.
+    /// Cập nhật vị trí UI của tất cả group theo gridPos.
+    /// Animate thì tween root, không animate thì set thẳng.
     /// </summary>
     public void UpdateAllBlockPositions(bool animate = true)
     {
-        List<(Block block, RectTransform rt, Vector2 snappedPos)> validTargets = new();
+        HashSet<BlockGroup> handledGroups = new HashSet<BlockGroup>();
+        List<(RectTransform root, Vector2 targetPos)> groupMoves = new List<(RectTransform, Vector2)>();
 
         for (int i = 0; i < currentBlocks.Count; i++)
         {
             Block block = currentBlocks[i];
-            if (block == null) continue;
+            if (block == null || block.group == null || block.group.root == null)
+                continue;
 
-            RectTransform rt = block.GetComponent<RectTransform>();
-            if (rt == null) continue;
+            BlockGroup group = block.group;
+            if (!handledGroups.Add(group))
+                continue;
 
-            rt.DOKill();
+            RectTransform rootRect = group.root as RectTransform;
+            if (rootRect == null)
+                continue;
 
-            block.targetPosition = GridToPosition(block.gridPos);
-            Vector2 snappedPos = new(
-                Mathf.Round(block.targetPosition.x),
-                Mathf.Round(block.targetPosition.y)
-            );
+            Block anchor = group.GetAnchorBlock();
+            if (anchor == null)
+                continue;
 
-            validTargets.Add((block, rt, snappedPos));
+            Vector2 targetRootPos = GridToPosition(anchor.gridPos);
+
+            group.RebuildLocalLayout(false);
+
+            rootRect.DOKill(false);
+            groupMoves.Add((rootRect, targetRootPos));
         }
 
         if (!animate)
         {
-            for (int i = 0; i < validTargets.Count; i++)
-            {
-                validTargets[i].rt.anchoredPosition = validTargets[i].snappedPos;
-            }
+            for (int i = 0; i < groupMoves.Count; i++)
+                groupMoves[i].root.anchoredPosition = groupMoves[i].targetPos;
 
             isTweening = false;
             return;
         }
 
-        if (validTargets.Count == 0)
+        if (groupMoves.Count == 0)
         {
             isTweening = false;
             return;
@@ -525,13 +521,13 @@ public class PuzzleManager : MonoBehaviour
 
         isTweening = true;
         int completed = 0;
-        int total = validTargets.Count;
+        int total = groupMoves.Count;
 
-        for (int i = 0; i < validTargets.Count; i++)
+        for (int i = 0; i < groupMoves.Count; i++)
         {
-            var item = validTargets[i];
+            var item = groupMoves[i];
 
-            item.rt.DOAnchorPos(item.snappedPos, 0.5f)
+            item.root.DOAnchorPos(item.targetPos, 0.5f)
                 .SetEase(Ease.OutCubic)
                 .OnComplete(() =>
                 {
@@ -549,7 +545,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Chuyển tọa độ grid sang anchoredPosition trên UI board.
+    /// Đổi tọa độ grid sang vị trí UI trên board.
     /// </summary>
     public Vector2 GridToPosition(Vector2Int pos)
     {
@@ -563,8 +559,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Chuyển vị trí UI về tọa độ grid gần nhất.
-    /// Dùng khi thả drag để xác định offset move.
+    /// Đổi vị trí UI về ô grid gần nhất.
     /// </summary>
     public Vector2Int PositionToGrid(Vector2 pos)
     {
@@ -578,11 +573,11 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Trả về danh sách các ô trống hiện tại trên board.
+    /// Lấy toàn bộ ô trống hiện tại trên board.
     /// </summary>
     public List<Vector2Int> GetEmptyPositions()
     {
-        List<Vector2Int> empty = new();
+        List<Vector2Int> empty = new List<Vector2Int>();
 
         for (int r = 0; r < rows; r++)
         {
@@ -597,12 +592,11 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Xáo trộn vị trí tất cả block trên board.
-    /// Sau đó rebuild grid và update lại UI.
+    /// Xáo trộn vị trí tất cả block rồi rebuild grid và update UI.
     /// </summary>
     public void ShuffleBlocks()
     {
-        List<Vector2Int> positions = new(rows * cols);
+        List<Vector2Int> positions = new List<Vector2Int>(rows * cols);
 
         for (int r = 0; r < rows; r++)
         {
@@ -624,8 +618,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Kiểm tra cả group có thể move theo shift mà không ra khỏi board hay không.
-    /// Chỉ check biên, chưa check collision.
+    /// Check cả group có đi theo shift mà không ra ngoài board không.
     /// </summary>
     public bool CanMoveGroup(BlockGroup group, Vector2Int shift)
     {
@@ -644,14 +637,13 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Validate toàn bộ group:
-    /// nếu block nào không còn correct neighbor trong group
-    /// thì tách block đó ra khỏi group hiện tại.
+    /// Validate group:
+    /// block nào không còn neighbor đúng trong group thì tách ra.
     /// </summary>
     public void ValidateAllGroups()
     {
-        List<BlockGroup> groups = new();
-        HashSet<BlockGroup> uniqueGroups = new();
+        List<BlockGroup> groups = new List<BlockGroup>();
+        HashSet<BlockGroup> uniqueGroups = new HashSet<BlockGroup>();
 
         for (int i = 0; i < currentBlocks.Count; i++)
         {
@@ -659,28 +651,30 @@ public class PuzzleManager : MonoBehaviour
             if (block != null && block.group != null && uniqueGroups.Add(block.group))
                 groups.Add(block.group);
         }
+
         for (int i = 0; i < groups.Count; i++)
         {
             BlockGroup group = groups[i];
             if (group == null || group.blocks == null || group.blocks.Count <= 1)
                 continue;
 
-            List<Block> snapshot = new(group.blocks);
-            List<Block> isolatedBlocks = new();
+            List<Block> snapshot = new List<Block>(group.blocks);
+            List<Block> isolatedBlocks = new List<Block>();
 
             for (int j = 0; j < snapshot.Count; j++)
             {
                 Block block = snapshot[j];
-                if (block == null)
-                    continue;
-                if (block.group != group)
-                    continue;
+                if (block == null) continue;
+                if (block.group != group) continue;
+
                 List<Block> neighbors = GetCorrectNeighborsInSameGroup(block, group);
                 if (neighbors.Count == 0)
                     isolatedBlocks.Add(block);
             }
+
             if (isolatedBlocks.Count == 0)
                 continue;
+
             if (isolatedBlocks.Count >= snapshot.Count)
                 continue;
 
@@ -689,12 +683,12 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Tách các group bị đứt kết nối thành nhiều subgroup độc lập.
+    /// Tách các group bị đứt kết nối thành nhiều subgroup.
     /// </summary>
     public void SplitDisconnectedGroups()
     {
-        List<BlockGroup> groups = new();
-        HashSet<BlockGroup> uniqueGroups = new();
+        List<BlockGroup> groups = new List<BlockGroup>();
+        HashSet<BlockGroup> uniqueGroups = new HashSet<BlockGroup>();
 
         for (int i = 0; i < currentBlocks.Count; i++)
         {
@@ -711,8 +705,7 @@ public class PuzzleManager : MonoBehaviour
 
     /// <summary>
     /// Sắp xếp layer hiển thị:
-    /// group đang drag nằm trên cùng,
-    /// các group bị hit nằm ngay phía dưới để render đẹp hơn.
+    /// group đang kéo trên cùng, các group bị hit nằm dưới nó.
     /// </summary>
     private void SortDraggedAndHitLayers(BlockGroup draggedGroup, List<Block> hitBlocks)
     {
@@ -722,7 +715,7 @@ public class PuzzleManager : MonoBehaviour
         draggedGroup.root.SetAsLastSibling();
 
         int currentIndex = draggedGroup.root.GetSiblingIndex() - 1;
-        HashSet<BlockGroup> sortedGroups = new();
+        HashSet<BlockGroup> sortedGroups = new HashSet<BlockGroup>();
 
         for (int i = 0; i < hitBlocks.Count; i++)
         {
@@ -748,7 +741,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Kiểm tra 1 tọa độ grid có nằm trong board không.
+    /// Check tọa độ có nằm trong board không.
     /// </summary>
     public bool IsInside(Vector2Int pos)
     {
@@ -756,42 +749,25 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Đồng bộ lại ma trận grid từ danh sách currentBlocks.
-    /// Dùng sau khi move/swap/push/shuffle để bảo đảm board state đúng.
+    /// Dựng lại ma trận grid từ currentBlocks để sync logic.
     /// </summary>
     public void RebuildGridFromBlocksStrict()
     {
-        if (grid == null || grid.GetLength(0) != rows || grid.GetLength(1) != cols)
-            grid = new Block[rows, cols];
-        else
-            System.Array.Clear(grid, 0, grid.Length);
-
-        HashSet<Block> visited = new();
+        grid = new Block[rows, cols];
 
         for (int i = 0; i < currentBlocks.Count; i++)
         {
             Block block = currentBlocks[i];
             if (block == null) continue;
 
-            if (!visited.Add(block))
-            {
-                Debug.LogError($"Duplicate block reference in currentBlocks: {block.name}");
-                continue;
-            }
-
             if (!IsInside(block.gridPos))
             {
-                Debug.LogError($"Block out of range: {block.name} => {block.gridPos}");
                 continue;
             }
 
-            Block existing = grid[block.gridPos.x, block.gridPos.y];
-            if (existing != null && existing != block)
+            if (grid[block.gridPos.x, block.gridPos.y] != null)
             {
-                Debug.LogError(
-                    $"Duplicate gridPos detected at {block.gridPos}. Existing={existing.name}, New={block.name}"
-                );
-                continue;
+                Debug.LogWarning($"Grid overwrite at {block.gridPos} by {block.name}");
             }
 
             grid[block.gridPos.x, block.gridPos.y] = block;
