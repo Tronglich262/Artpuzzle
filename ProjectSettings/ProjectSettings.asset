@@ -261,13 +261,13 @@ PlayerSettings:
   clonedFromGUID: 3c72c65a16f0acb438eed22b8b16c24a
   templatePackageId: com.unity.template.urp-blank@17.0.14
   templateDefaultScene: Assets/Scenes/SampleScene.unity
-  useCustomMainManifest: 0
+  useCustomMainManifest: 1
   useCustomLauncherManifest: 0
-  useCustomMainGradleTemplate: 0
+  useCustomMainGradleTemplate: 1
   useCustomLauncherGradleManifest: 0
   useCustomBaseGradleTemplate: 0
-  useCustomGradlePropertiesTemplate: 0
-  useCustomGradleSettingsTemplate: 0
+  useCustomGradlePropertiesTemplate: 1
+  useCustomGradleSettingsTemplate: 1
   useCustomProguardFile: 0
   AndroidTargetArchitectures: 2
   AndroidAllowedArchitectures: -1
@@ -834,25 +834,25 @@ PlayerSettings:
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
   scriptingDefineSymbols:
-    Android: DOTWEEN
-    EmbeddedLinux: DOTWEEN
-    GameCoreScarlett: DOTWEEN
-    GameCoreXboxOne: DOTWEEN
-    Kepler: DOTWEEN
-    LinuxHeadlessSimulation: DOTWEEN
-    Nintendo Switch: DOTWEEN
-    Nintendo Switch 2: DOTWEEN
-    PS4: DOTWEEN
-    PS5: DOTWEEN
-    QNX: DOTWEEN
+    Android: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE;ODIN_INSPECTOR;ODIN_INSPECTOR_3;ODIN_INSPECTOR_3_1;ODIN_INSPECTOR_3_2;ODIN_INSPECTOR_3_3
+    EmbeddedLinux: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    GameCoreScarlett: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    GameCoreXboxOne: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    Kepler: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    LinuxHeadlessSimulation: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    Nintendo Switch: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    Nintendo Switch 2: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    PS4: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    PS5: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    QNX: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
     ReservedCFE: DOTWEEN
-    Standalone: DOTWEEN
-    VisionOS: DOTWEEN
-    WebGL: DOTWEEN
-    Windows Store Apps: DOTWEEN
-    XboxOne: DOTWEEN
-    iPhone: DOTWEEN
-    tvOS: DOTWEEN
+    Standalone: DOTWEEN;ODIN_INSPECTOR;ODIN_INSPECTOR_3;ODIN_INSPECTOR_3_1;ODIN_INSPECTOR_3_2;ODIN_INSPECTOR_3_3;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    VisionOS: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    WebGL: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    Windows Store Apps: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    XboxOne: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    iPhone: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
+    tvOS: DOTWEEN;APPLOVIN_MAX;FIREBASE_ANALYTIC;FIREBASE_REMOTE
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend:
