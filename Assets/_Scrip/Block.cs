@@ -10,14 +10,16 @@ public class Block : MonoBehaviour
 
     [HideInInspector] public BlockGroup group;
     [HideInInspector] public Vector2 targetPosition;
-
-    // Hàm bật/tắt viền của riêng mảnh này
     public void SetOutline(bool active)
     {
         var outline = GetComponent<Outline>();
         if (outline != null) outline.enabled = active;
     }
 
+    /// <summary>
+    /// Cập nhật vị trí và scale của block theo targetPosition
+    /// bằng tween để tạo chuyển động mượt.
+    /// </summary>
     public void UpdateTransform()
     {
         RectTransform rt = GetComponent<RectTransform>();
@@ -27,9 +29,7 @@ public class Block : MonoBehaviour
         rt.DOKill(true);
         transform.DOKill(true);
 
-        rt.DOAnchorPos(targetPosition, duration)
-            .SetEase(Ease.OutCubic);
-
+        rt.DOAnchorPos(targetPosition, duration).SetEase(Ease.OutCubic);
         transform.DOScale(Vector3.one, duration);
     }
 }

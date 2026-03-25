@@ -1,33 +1,43 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using System.Collections.Generic;
-using System.Linq;
 using DG.Tweening;
-using UnityEngine.InputSystem;
 
 public class PuzzleManager : MonoBehaviour
 {
     [Header("Level System")]
     public List<PuzzleLevel> levels;
-
-    //level Data
     public int currentLevelIndex = 0;
+
     [SerializeField] public Sprite sourceImage;
     [SerializeField] public GameObject blockPrefab;
     [SerializeField] public int rows = 3;
     [SerializeField] public int cols = 3;
     [SerializeField] public float blockSize = 100f;
-
-    public bool isTweening { get; private set; }
-    public void SetTweening(bool state) => isTweening = state;
-
     [SerializeField] private RectTransform boardRoot;
 
-    [HideInInspector]
-    public List<Block> currentBlocks = new List<Block>();
-
+    // Đánh dấu hệ thống đang tween để chặn input liên tiếp
+    public bool isTweening { get; private set; }
+    public void SetTweening(bool state) => isTweening = state;
+    // Danh sách toàn bộ block hiện có trên board
+    [HideInInspector] public List<Block> currentBlocks = new();
+    // Ma trận lưu trạng thái board theo grid
+    private Block[,] grid;
     public static PuzzleManager Instance { get; private set; }
 
+    // 4 hướng cơ bản để check neighbor
+    private static readonly Vector2Int[] FourDirs =
+    {
+        Vector2Int.up,
+        Vector2Int.down,
+        Vector2Int.left,
+        Vector2Int.right
+    };
+
+    /// <summary>
+    /// Khởi tạo singleton.
+    /// Nếu đã có instance khác thì destroy object hiện tại.
+    /// </summary>
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -35,369 +45,375 @@ public class PuzzleManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
         Instance = this;
     }
 
-    void Start()
+    /// <summary>
+    /// Tạo puzzle ban đầu và shuffle vị trí block.
+    /// </summary>
+    private void Start()
     {
         GeneratePuzzle();
         ShuffleBlocks();
     }
 
     /// <summary>
-    /// Xoá block cũ, tạo block mới theo thông số level,
-    /// gán sprite và tạo group riêng cho từng block.
+    /// Tạo toàn bộ block theo rows/cols từ source image.
+    /// Mỗi block ban đầu có correctPos và gridPos trùng nhau.
+    /// Đồng thời tạo mỗi block nằm trong 1 group riêng.
     /// </summary>
     public void GeneratePuzzle()
     {
-        foreach (Transform child in boardRoot) Destroy(child.gameObject);
+        foreach (Transform child in boardRoot)
+            Destroy(child.gameObject);
+
         currentBlocks.Clear();
-        Debug.Log("Clear image cũ");
+        grid = new Block[rows, cols];
 
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < cols; c++)
             {
                 GameObject obj = Instantiate(blockPrefab, boardRoot);
+                Block block = obj.GetComponent<Block>();
 
-                Block b = obj.GetComponent<Block>();
-                b.gridPos = new Vector2Int(r, c);
-                b.correctPos = new Vector2Int(r, c);
+                block.gridPos = new Vector2Int(r, c);
+                block.correctPos = new Vector2Int(r, c);
 
-                SetupBlockVisual(obj, r, c);
-                currentBlocks.Add(b);
+                SetupBlockVisual(block, r, c);
 
-                // Tạo group root đúng chuẩn UI
-                BlockGroup g = new BlockGroup();
-                GameObject rootObj = new GameObject("GroupRoot", typeof(RectTransform));
+                currentBlocks.Add(block);
+                grid[r, c] = block;
 
-                RectTransform rootRect = rootObj.GetComponent<RectTransform>();
-                rootRect.SetParent(boardRoot, false);
-                rootRect.localScale = Vector3.one;
-                rootRect.anchoredPosition = Vector2.zero;
-
-                g.root = rootRect;
-
-                b.group = g;
-                g.blocks.Add(b);
-                b.transform.SetParent(g.root, false);
-
-                b.SetOutline(true);
+                BlockGroup group = CreateSingleBlockGroup();
+                block.group = group;
+                group.blocks.Add(block);
+                block.transform.SetParent(group.root, false);
+                block.SetOutline(true);
             }
         }
 
-        Debug.Log("Load Level mới");
-        UpdateAllBlockPositions();
+        UpdateAllBlockPositions(false);
     }
 
     /// <summary>
-    /// Cắt sprite từ sourceImage dựa trên vị trí row, col và gán cho block.
+    /// Tạo 1 group mới chỉ chứa 1 block.
+    /// Mỗi group có root riêng để drag/move theo nhóm.
     /// </summary>
-    void SetupBlockVisual(GameObject obj, int row, int col)
+    private BlockGroup CreateSingleBlockGroup()
     {
-        Block b = obj.GetComponent<Block>();
+        var group = new BlockGroup();
+
+        GameObject rootObj = new("GroupRoot", typeof(RectTransform));
+        RectTransform rootRect = rootObj.GetComponent<RectTransform>();
+        rootRect.SetParent(boardRoot, false);
+        rootRect.localScale = Vector3.one;
+        rootRect.anchoredPosition = Vector2.zero;
+
+        group.root = rootRect;
+        return group;
+    }
+
+    /// <summary>
+    /// Cắt sprite con từ ảnh gốc theo vị trí row/col
+    /// rồi gán cho block tương ứng.
+    /// </summary>
+    private void SetupBlockVisual(Block block, int row, int col)
+    {
         int texW = sourceImage.texture.width;
         int texH = sourceImage.texture.height;
         int spriteW = texW / cols;
         int spriteH = texH / rows;
 
-        Rect rect = new Rect(
+        Rect rect = new(
             col * spriteW,
             texH - (row + 1) * spriteH,
             spriteW,
             spriteH
         );
 
-        b.img.sprite = Sprite.Create(
-            sourceImage.texture,
-            rect,
-            new Vector2(0.5f, 0.5f)
-        );
+        block.img.sprite = Sprite.Create(sourceImage.texture, rect, new Vector2(0.5f, 0.5f));
     }
 
     /// <summary>
-    /// Di chuyển group block theo offset.
-    /// Nếu có block bị chặn sẽ đẩy chúng sang vị trí trống gần nhất.
+    /// Xử lý move chính của 1 group:
+    /// 1. Tính vị trí đích
+    /// 2. Tìm block va chạm
+    /// 3. Thử swap
+    /// 4. Nếu không swap được thì push
+    /// 5. Cập nhật grid, position, group merge/split
     /// </summary>
     public bool MoveGroupWithPush(
-    BlockGroup draggedGroup,
-    Vector2Int offset,
-    BlockDragHandler.DragMoveType moveType,
-    bool animate = true)
+        BlockGroup draggedGroup,
+        Vector2Int offset,
+        BlockDragHandler.DragMoveType moveType,
+        bool animate = true)
     {
-        var finalPositions = new Dictionary<Block, Vector2Int>(draggedGroup.blocks.Count);
-        var occupiedTargets = new HashSet<Vector2Int>();
+        if (draggedGroup == null || draggedGroup.blocks.Count == 0)
+            return false;
 
-        // ===== TÍNH TOÁN VỊ TRÍ CUỐI CỦA GROUP ĐANG KÉO =====
-        foreach (var b in draggedGroup.blocks)
+        List<Block> draggedBlocks = GetValidBlocks(draggedGroup.blocks);
+        HashSet<Block> draggedSet = new(draggedBlocks);
+
+        Dictionary<Block, Vector2Int> finalPositions = new(draggedBlocks.Count);
+        HashSet<Vector2Int> occupiedTargets = new();
+
+        // Tính vị trí đích cho toàn bộ block đang drag
+        for (int i = 0; i < draggedBlocks.Count; i++)
         {
-            Vector2Int target = b.gridPos + offset;
+            Block block = draggedBlocks[i];
+            Vector2Int target = block.gridPos + offset;
 
-            if (target.x < 0 || target.x >= rows || target.y < 0 || target.y >= cols)
+            if (!IsInside(target))
                 return false;
 
-            finalPositions[b] = target;
+            finalPositions[block] = target;
             occupiedTargets.Add(target);
         }
 
-        // ===== TÌM CÁC BLOCK BỊ ĐỤNG =====
-        var hitBlocks = new List<Block>();
-        var hitSet = new HashSet<Block>();
+        // Lấy danh sách block bị va chạm ở vị trí đích
+        List<Block> hitBlocks = CollectHitBlocks(draggedBlocks, draggedSet, finalPositions);
 
-        foreach (var b in draggedGroup.blocks)
+        // Thử swap trước
+        bool swapped = TrySwapBlocks(draggedBlocks, draggedSet, finalPositions);
+
+        // Nếu không swap được thì thử push
+        if (!swapped)
         {
-            Vector2Int target = finalPositions[b];
-
-            var hit = currentBlocks.FirstOrDefault(x =>
-                x != null &&
-                x.group != draggedGroup &&
-                x.gridPos == target);
-
-            if (hit != null && !hitSet.Contains(hit))
-            {
-                hitBlocks.Add(hit);
-                hitSet.Add(hit);
-            }
-        }
-
-        // ===== THỬ SWAP ĐÚNG THEO TARGET THỰC TẾ =====
-        bool canSwap = hitBlocks.Count == draggedGroup.blocks.Count;
-
-        if (canSwap)
-        {
-            var swapPairs = new List<(Block dragged, Block hit)>();
-            var usedHits = new HashSet<Block>();
-
-            foreach (var dragged in draggedGroup.blocks)
-            {
-                Vector2Int target = finalPositions[dragged];
-
-                var hit = currentBlocks.FirstOrDefault(x =>
-                    x != null &&
-                    x.group != draggedGroup &&
-                    x.gridPos == target);
-
-                if (hit == null || usedHits.Contains(hit))
-                {
-                    canSwap = false;
-                    break;
-                }
-
-                swapPairs.Add((dragged, hit));
-                usedHits.Add(hit);
-            }
-
-            if (canSwap)
-            {
-                foreach (var pair in swapPairs)
-                {
-                    Vector2Int temp = pair.dragged.gridPos;
-                    pair.dragged.gridPos = pair.hit.gridPos;
-                    pair.hit.gridPos = temp;
-                }
-            }
-        }
-
-        // ===== NẾU KHÔNG SWAP ĐƯỢC THÌ PUSH =====
-        if (!canSwap)
-        {
-            bool pushSuccess = PushHitBlocks(hitBlocks, draggedGroup, finalPositions, occupiedTargets, moveType);
-
-            if (!pushSuccess)
+            if (!PushHitBlocks(hitBlocks, draggedGroup, occupiedTargets, moveType))
                 return false;
 
-            foreach (var b in draggedGroup.blocks)
-            {
-                b.gridPos = finalPositions[b];
-            }
+            ApplyDraggedPositions(draggedBlocks, finalPositions);
         }
 
-        // ===== UPDATE UI =====
+        // Đồng bộ lại grid + transform + logic group
+        RebuildGridFromBlocks();
         UpdateAllBlockPositions(animate);
         ValidateAllGroups();
         Invoke(nameof(CheckAndMergeGroups), 0.4f);
 
-        var allGroups = currentBlocks
-            .Where(b => b != null && b.group != null)
-            .Select(b => b.group)
-            .Distinct()
-            .ToList();
+        SplitDisconnectedGroups();
+        SortDraggedAndHitLayers(draggedGroup, hitBlocks);
+        RebuildGridFromBlocks();
 
-        foreach (var g in allGroups)
+        return true;
+    }
+
+    /// <summary>
+    /// Lọc ra các block hợp lệ khác null từ 1 list.
+    /// </summary>
+    private List<Block> GetValidBlocks(List<Block> source)
+    {
+        List<Block> result = new(source.Count);
+        for (int i = 0; i < source.Count; i++)
         {
-            if (g != null)
-                g.SplitIfDisconnected(transform);
+            if (source[i] != null)
+                result.Add(source[i]);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Lấy danh sách các block bị group đang drag đụng vào ở vị trí target.
+    /// Không lấy block nằm trong cùng group đang drag.
+    /// </summary>
+    private List<Block> CollectHitBlocks(
+        List<Block> draggedBlocks,
+        HashSet<Block> draggedSet,
+        Dictionary<Block, Vector2Int> finalPositions)
+    {
+        List<Block> hitBlocks = new();
+        HashSet<Block> hitSet = new();
+
+        for (int i = 0; i < draggedBlocks.Count; i++)
+        {
+            Block dragged = draggedBlocks[i];
+            Block hit = GetBlockAt(finalPositions[dragged]);
+
+            if (hit == null || draggedSet.Contains(hit) || hit.group == dragged.group)
+                continue;
+
+            if (hitSet.Add(hit))
+                hitBlocks.Add(hit);
         }
 
-        // ===== SORT LAYER =====
-        if (draggedGroup.root != null)
+        return hitBlocks;
+    }
+
+    /// <summary>
+    /// Thử swap block-by-block giữa group kéo và block ở vị trí đích.
+    /// Chỉ thành công khi mọi target đều có block khác hợp lệ để swap.
+    /// </summary>
+    private bool TrySwapBlocks(
+        List<Block> draggedBlocks,
+        HashSet<Block> draggedSet,
+        Dictionary<Block, Vector2Int> finalPositions)
+    {
+        if (draggedBlocks.Count == 0)
+            return false;
+
+        List<(Block dragged, Block hit)> pairs = new(draggedBlocks.Count);
+        HashSet<Block> usedHits = new();
+
+        // Kiểm tra điều kiện swap hợp lệ
+        for (int i = 0; i < draggedBlocks.Count; i++)
         {
-            draggedGroup.root.SetAsLastSibling();
+            Block dragged = draggedBlocks[i];
+            Block hit = GetBlockAt(finalPositions[dragged]);
 
-            int topIndex = draggedGroup.root.GetSiblingIndex();
-            int currentIndex = topIndex - 1;
+            if (hit == null || draggedSet.Contains(hit) || hit.group == dragged.group || !usedHits.Add(hit))
+                return false;
 
-            foreach (var hb in hitBlocks)
-            {
-                if (hb != null && hb.group != null && hb.group.root != null)
-                {
-                    hb.group.root.SetSiblingIndex(Mathf.Max(0, currentIndex));
-                    currentIndex--;
-                }
-            }
+            pairs.Add((dragged, hit));
+        }
+
+        // Đổi chỗ gridPos giữa từng cặp block
+        for (int i = 0; i < pairs.Count; i++)
+        {
+            var pair = pairs[i];
+            Vector2Int oldDraggedPos = pair.dragged.gridPos;
+            pair.dragged.gridPos = pair.hit.gridPos;
+            pair.hit.gridPos = oldDraggedPos;
         }
 
         return true;
     }
 
+    /// <summary>
+    /// Gán gridPos mới cho toàn bộ block đang drag
+    /// sau khi push thành công hoặc move thường.
+    /// </summary>
+    private void ApplyDraggedPositions(List<Block> draggedBlocks, Dictionary<Block, Vector2Int> finalPositions)
+    {
+        for (int i = 0; i < draggedBlocks.Count; i++)
+        {
+            Block block = draggedBlocks[i];
+            block.gridPos = finalPositions[block];
+        }
+    }
+
+    /// <summary>
+    /// Đẩy các block bị va chạm sang ô trống phù hợp.
+    /// Ưu tiên theo hướng kéo (ngang, dọc, chéo).
+    /// Nếu block hit đang nằm trong group > 1 block thì tách ra trước khi đẩy.
+    /// </summary>
     private bool PushHitBlocks(
         List<Block> hitBlocks,
         BlockGroup draggedGroup,
-        Dictionary<Block, Vector2Int> finalPositions,
         HashSet<Vector2Int> occupiedTargets,
         BlockDragHandler.DragMoveType moveType)
     {
-        var available = new List<Vector2Int>(GetEmptyPositions());
+        HashSet<Vector2Int> available = new(GetEmptyPositions());
 
-        // cho phép hit block được đẩy vào vị trí cũ của dragged group
-        foreach (var b in draggedGroup.blocks)
+        // Cho phép dùng vị trí cũ của group kéo làm chỗ chứa block bị push
+        for (int i = 0; i < draggedGroup.blocks.Count; i++)
         {
-            if (!available.Contains(b.gridPos))
-                available.Add(b.gridPos);
+            Block block = draggedGroup.blocks[i];
+            if (block != null)
+                available.Add(block.gridPos);
         }
 
-        // loại bỏ các ô mà dragged group sắp chiếm
-        available.RemoveAll(pos => occupiedTargets.Contains(pos));
+        // Loại bỏ các ô mà group kéo sẽ chiếm sau cùng
+        foreach (Vector2Int pos in occupiedTargets)
+            available.Remove(pos);
 
-        var used = new HashSet<Vector2Int>();
-        var hitMoves = new Dictionary<Block, Vector2Int>();
+        HashSet<Vector2Int> used = new();
+        Dictionary<Block, Vector2Int> hitMoves = new();
 
-        foreach (var hb in hitBlocks)
+        // Tìm vị trí push tốt nhất cho từng block bị đụng
+        for (int i = 0; i < hitBlocks.Count; i++)
         {
-            if (hb == null) continue;
+            Block hit = hitBlocks[i];
+            if (hit == null) continue;
 
-            bool found = TryFindBestPushSpot(
-                hb.gridPos,
-                available,
-                used,
-                moveType,
-                out Vector2Int bestSpot);
-
-            if (!found)
+            if (!TryFindBestPushSpot(hit.gridPos, available, used, moveType, out Vector2Int bestSpot))
                 return false;
 
-            hitMoves[hb] = bestSpot;
+            hitMoves[hit] = bestSpot;
             used.Add(bestSpot);
         }
 
-        foreach (var hb in hitBlocks)
+        // Apply vị trí push
+        for (int i = 0; i < hitBlocks.Count; i++)
         {
-            if (hb == null) continue;
+            Block hit = hitBlocks[i];
+            if (hit == null) continue;
 
-            if (hb.group != null && hb.group.blocks.Count > 1)
-            {
-                hb.group.SplitByBlocks(new List<Block> { hb }, transform);
-            }
+            if (hit.group != null && hit.group.blocks.Count > 1)
+                hit.group.SplitByBlocks(new List<Block> { hit }, transform);
 
-            hb.gridPos = hitMoves[hb];
+            hit.gridPos = hitMoves[hit];
         }
 
         return true;
     }
 
+    /// <summary>
+    /// Tìm ô push tốt nhất cho 1 block.
+    /// Ưu tiên ô đúng cùng hướng drag, nếu không có thì lấy ô gần nhất còn lại.
+    /// </summary>
     private bool TryFindBestPushSpot(
         Vector2Int origin,
-        List<Vector2Int> available,
+        HashSet<Vector2Int> available,
         HashSet<Vector2Int> used,
         BlockDragHandler.DragMoveType moveType,
         out Vector2Int bestSpot)
     {
         bestSpot = default;
 
-        var candidates = available
-            .Where(pos => !used.Contains(pos))
-            .ToList();
+        bool foundPriority = false;
+        bool foundFallback = false;
+        float bestPriorityDist = float.MaxValue;
+        float bestFallbackDist = float.MaxValue;
 
-        if (candidates.Count == 0)
-            return false;
-
-        // Ưu tiên theo hướng kéo
-        IEnumerable<Vector2Int> prioritized = null;
-
-        switch (moveType)
+        foreach (Vector2Int pos in available)
         {
-            case BlockDragHandler.DragMoveType.Horizontal:
-                {
-                    // cùng hàng trước
-                    prioritized = candidates.Where(pos => pos.x == origin.x);
-                    break;
-                }
+            if (used.Contains(pos))
+                continue;
 
-            case BlockDragHandler.DragMoveType.Vertical:
-                {
-                    // cùng cột trước
-                    prioritized = candidates.Where(pos => pos.y == origin.y);
-                    break;
-                }
+            float dist = (origin - pos).sqrMagnitude;
 
-            case BlockDragHandler.DragMoveType.Diagonal:
-                {
-                    // cùng đường chéo trước
-                    prioritized = candidates.Where(pos =>
-                        Mathf.Abs(pos.x - origin.x) == Mathf.Abs(pos.y - origin.y));
-                    break;
-                }
-
-            default:
-                {
-                    prioritized = Enumerable.Empty<Vector2Int>();
-                    break;
-                }
-        }
-
-        var prioritizedList = prioritized.ToList();
-
-        if (prioritizedList.Count > 0)
-        {
-            float bestDist = float.MaxValue;
-
-            foreach (var pos in prioritizedList)
+            if (MatchMoveType(origin, pos, moveType))
             {
-                float dist = (origin - pos).sqrMagnitude;
-
-                if (dist < bestDist)
+                if (dist < bestPriorityDist)
                 {
-                    bestDist = dist;
+                    bestPriorityDist = dist;
                     bestSpot = pos;
+                    foundPriority = true;
                 }
             }
-
-            return true;
-        }
-
-        // fallback: lấy ô gần nhất
-        {
-            float bestDist = float.MaxValue;
-            bool found = false;
-
-            foreach (var pos in candidates)
+            else if (!foundPriority && dist < bestFallbackDist)
             {
-                float dist = (origin - pos).sqrMagnitude;
-
-                if (dist < bestDist)
-                {
-                    bestDist = dist;
-                    bestSpot = pos;
-                    found = true;
-                }
+                bestFallbackDist = dist;
+                bestSpot = pos;
+                foundFallback = true;
             }
-
-            return found;
         }
+
+        return foundPriority || foundFallback;
     }
 
     /// <summary>
-    /// Kiểm tra và gộp các block đúng vị trí thành group.
+    /// Kiểm tra 2 ô có cùng trục ưu tiên theo kiểu kéo hay không.
+    /// Horizontal: cùng hàng
+    /// Vertical: cùng cột
+    /// Diagonal: cùng đường chéo
+    /// </summary>
+    private bool MatchMoveType(Vector2Int origin, Vector2Int target, BlockDragHandler.DragMoveType moveType)
+    {
+        return moveType switch
+        {
+            BlockDragHandler.DragMoveType.Horizontal => target.x == origin.x,
+            BlockDragHandler.DragMoveType.Vertical => target.y == origin.y,
+            BlockDragHandler.DragMoveType.Diagonal => Mathf.Abs(target.x - origin.x) == Mathf.Abs(target.y - origin.y),
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Quét toàn bộ block để merge các group nếu có 2 block
+    /// đang đứng cạnh nhau đúng theo correctPos gốc.
     /// </summary>
     public void CheckAndMergeGroups()
     {
@@ -409,56 +425,90 @@ public class PuzzleManager : MonoBehaviour
 
             for (int i = 0; i < currentBlocks.Count; i++)
             {
-                for (int j = i + 1; j < currentBlocks.Count; j++)
-                {
-                    Block a = currentBlocks[i];
-                    Block b = currentBlocks[j];
+                Block a = currentBlocks[i];
+                if (a == null || a.group == null) continue;
 
-                    if (a.group != b.group && IsCorrectNeighbor(a, b))
-                    {
-                        a.group.Merge(b.group);
-                        foundMerge = true;
-                        break;
-                    }
+                for (int d = 0; d < FourDirs.Length; d++)
+                {
+                    Block b = GetBlockAt(a.gridPos + FourDirs[d]);
+                    if (b == null || b.group == null || a.group == b.group) continue;
+
+                    if (!IsCorrectNeighbor(a, b)) continue;
+
+                    a.group.Merge(b.group);
+                    foundMerge = true;
+                    break;
                 }
-                if (foundMerge) break;
+
+                if (foundMerge)
+                    break;
             }
         }
     }
 
     /// <summary>
-    /// Kiểm tra hai block có phải là hàng xóm đúng.
+    /// Kiểm tra 2 block có phải hàng xóm đúng theo ảnh gốc hay không.
+    /// Điều kiện:
+    /// - đang đứng cạnh nhau trên grid
+    /// - độ lệch hiện tại giống độ lệch correctPos
     /// </summary>
     public bool IsCorrectNeighbor(Block a, Block b)
     {
         Vector2Int gridDiff = a.gridPos - b.gridPos;
-        if (gridDiff.sqrMagnitude != 1) return false;
-
-        return gridDiff == (a.correctPos - b.correctPos);
+        return gridDiff.sqrMagnitude == 1 && gridDiff == (a.correctPos - b.correctPos);
     }
 
     /// <summary>
-    /// Cập nhật vị trí UI của tất cả block.
+    /// Lấy các block hàng xóm đúng của current trong cùng 1 group.
+    /// Dùng để validate hoặc split group.
+    /// </summary>
+    public List<Block> GetCorrectNeighborsInSameGroup(Block current, BlockGroup group)
+    {
+        List<Block> result = new(4);
+
+        if (current == null || group == null)
+            return result;
+
+        for (int i = 0; i < FourDirs.Length; i++)
+        {
+            Block neighbor = GetBlockAt(current.gridPos + FourDirs[i]);
+            if (neighbor != null && neighbor.group == group && IsCorrectNeighbor(current, neighbor))
+                result.Add(neighbor);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Cập nhật vị trí UI của tất cả block theo gridPos.
+    /// Nếu animate = true thì tween về đúng ô.
+    /// Nếu animate = false thì set luôn.
     /// </summary>
     public void UpdateAllBlockPositions(bool animate = true)
     {
-        int completedCount = 0;
-        int totalBlocks = currentBlocks.Count;
-
-        foreach (var b in currentBlocks)
+        int total = 0;
+        for (int i = 0; i < currentBlocks.Count; i++)
         {
-            if (b == null) continue;
+            if (currentBlocks[i] != null)
+                total++;
+        }
 
-            RectTransform rt = b.GetComponent<RectTransform>();
+        int completed = 0;
+
+        for (int i = 0; i < currentBlocks.Count; i++)
+        {
+            Block block = currentBlocks[i];
+            if (block == null) continue;
+
+            RectTransform rt = block.GetComponent<RectTransform>();
             if (rt == null) continue;
 
             rt.DOKill();
 
-            b.targetPosition = GridToPosition(b.gridPos);
-
-            Vector2 snappedPos = new Vector2(
-                Mathf.Round(b.targetPosition.x),
-                Mathf.Round(b.targetPosition.y)
+            block.targetPosition = GridToPosition(block.gridPos);
+            Vector2 snappedPos = new(
+                Mathf.Round(block.targetPosition.x),
+                Mathf.Round(block.targetPosition.y)
             );
 
             if (!animate)
@@ -468,27 +518,25 @@ public class PuzzleManager : MonoBehaviour
             }
 
             rt.DOAnchorPos(snappedPos, 0.5f)
-              .SetEase(Ease.OutCubic)
-              .OnComplete(() =>
-              {
-                  if (this == null) return;
-
-                  completedCount++;
-                  if (completedCount >= totalBlocks)
-                      isTweening = false;
-              });
+                .SetEase(Ease.OutCubic)
+                .OnComplete(() =>
+                {
+                    completed++;
+                    if (completed >= total)
+                        isTweening = false;
+                });
         }
 
         isTweening = animate;
     }
 
     /// <summary>
-    /// Chuyển grid sang vị trí UI.
+    /// Chuyển tọa độ grid sang anchoredPosition trên UI board.
     /// </summary>
     public Vector2 GridToPosition(Vector2Int pos)
     {
-        float startX = -((cols - 1) * blockSize) / 2f;
-        float startY = ((rows - 1) * blockSize) / 2f;
+        float startX = -((cols - 1) * blockSize) * 0.5f;
+        float startY = ((rows - 1) * blockSize) * 0.5f;
 
         return new Vector2(
             startX + pos.y * blockSize,
@@ -497,12 +545,13 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Chuyển vị trí UI sang grid.
+    /// Chuyển vị trí UI về tọa độ grid gần nhất.
+    /// Dùng khi thả drag để xác định offset move.
     /// </summary>
     public Vector2Int PositionToGrid(Vector2 pos)
     {
-        float startX = -((cols - 1) * blockSize) / 2f;
-        float startY = ((rows - 1) * blockSize) / 2f;
+        float startX = -((cols - 1) * blockSize) * 0.5f;
+        float startY = ((rows - 1) * blockSize) * 0.5f;
 
         int col = Mathf.RoundToInt((pos.x - startX) / blockSize);
         int row = Mathf.RoundToInt((startY - pos.y) / blockSize);
@@ -511,76 +560,201 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Lấy danh sách ô trống.
+    /// Trả về danh sách các ô trống hiện tại trên board.
     /// </summary>
     public List<Vector2Int> GetEmptyPositions()
     {
-        List<Vector2Int> empty = new List<Vector2Int>();
+        List<Vector2Int> empty = new();
 
         for (int r = 0; r < rows; r++)
+        {
             for (int c = 0; c < cols; c++)
-                if (!currentBlocks.Any(b => b.gridPos == new Vector2Int(r, c)))
+            {
+                if (grid[r, c] == null)
                     empty.Add(new Vector2Int(r, c));
+            }
+        }
 
         return empty;
     }
 
     /// <summary>
-    /// Xáo trộn vị trí block.  
+    /// Xáo trộn vị trí tất cả block trên board.
+    /// Sau đó rebuild grid và update lại UI.
     /// </summary>
     public void ShuffleBlocks()
     {
-        var positions = currentBlocks.Select(b => b.gridPos).ToList();
+        List<Vector2Int> positions = new(rows * cols);
 
-        foreach (var b in currentBlocks)
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < cols; c++)
+            {
+                positions.Add(new Vector2Int(r, c));
+            }
+        }
+
+        for (int i = 0; i < currentBlocks.Count; i++)
         {
             int rnd = Random.Range(0, positions.Count);
-            b.gridPos = positions[rnd];
+            currentBlocks[i].gridPos = positions[rnd];
             positions.RemoveAt(rnd);
         }
 
+        RebuildGridFromBlocks();
         UpdateAllBlockPositions();
     }
 
     /// <summary>
-    /// Kiểm tra group có thể di chuyển.
+    /// Kiểm tra cả group có thể move theo shift mà không ra khỏi board hay không.
+    /// Chỉ check biên, chưa check collision.
     /// </summary>
-    public bool CanMoveGroup(BlockGroup g, Vector2Int shift)
+    public bool CanMoveGroup(BlockGroup group, Vector2Int shift)
     {
-        foreach (var b in g.blocks)
-        {
-            Vector2Int nextPos = b.gridPos + shift;
+        if (group == null) return false;
 
-            if (nextPos.x < 0 || nextPos.x >= rows ||
-                nextPos.y < 0 || nextPos.y >= cols)
+        for (int i = 0; i < group.blocks.Count; i++)
+        {
+            Block block = group.blocks[i];
+            if (block == null) continue;
+
+            if (!IsInside(block.gridPos + shift))
                 return false;
         }
 
         return true;
     }
+
+    /// <summary>
+    /// Validate toàn bộ group:
+    /// nếu block nào không còn correct neighbor trong group
+    /// thì tách block đó ra khỏi group hiện tại.
+    /// </summary>
     public void ValidateAllGroups()
     {
-        var groups = currentBlocks
-            .Select(b => b.group)
-            .Distinct()
-            .ToList();
+        List<BlockGroup> groups = new();
+        HashSet<BlockGroup> uniqueGroups = new();
 
-        foreach (var g in groups)
+        for (int i = 0; i < currentBlocks.Count; i++)
         {
-            var blocksCopy = new List<Block>(g.blocks);
+            Block block = currentBlocks[i];
+            if (block != null && block.group != null && uniqueGroups.Add(block.group))
+                groups.Add(block.group);
+        }
 
-            foreach (var b in blocksCopy)
+        for (int i = 0; i < groups.Count; i++)
+        {
+            BlockGroup group = groups[i];
+            if (group == null) continue;
+
+            List<Block> snapshot = new(group.blocks);
+
+            for (int j = 0; j < snapshot.Count; j++)
             {
-                bool hasCorrectNeighbor = blocksCopy.Any(other =>
-                    other != b && IsCorrectNeighbor(b, other)
-                );
+                Block block = snapshot[j];
+                if (block == null) continue;
+                if (snapshot.Count <= 1) break;
 
-                // nếu không có neighbor đúng → tách ra
-                if (!hasCorrectNeighbor && blocksCopy.Count > 1)
-                {
-                    g.SplitByBlocks(new List<Block> { b }, transform);
-                }
+                List<Block> neighbors = GetCorrectNeighborsInSameGroup(block, group);
+                if (neighbors.Count == 0)
+                    group.SplitByBlocks(new List<Block> { block }, transform);
             }
+        }
+    }
+
+    /// <summary>
+    /// Tách các group bị đứt kết nối thành nhiều subgroup độc lập.
+    /// </summary>
+    private void SplitDisconnectedGroups()
+    {
+        List<BlockGroup> groups = new();
+        HashSet<BlockGroup> uniqueGroups = new();
+
+        for (int i = 0; i < currentBlocks.Count; i++)
+        {
+            Block block = currentBlocks[i];
+            if (block != null && block.group != null && uniqueGroups.Add(block.group))
+                groups.Add(block.group);
+        }
+
+        for (int i = 0; i < groups.Count; i++)
+        {
+            groups[i]?.SplitIfDisconnected(transform);
+        }
+    }
+
+    /// <summary>
+    /// Sắp xếp layer hiển thị:
+    /// group đang drag nằm trên cùng,
+    /// các group bị hit nằm ngay phía dưới để render đẹp hơn.
+    /// </summary>
+    private void SortDraggedAndHitLayers(BlockGroup draggedGroup, List<Block> hitBlocks)
+    {
+        if (draggedGroup == null || draggedGroup.root == null)
+            return;
+
+        draggedGroup.root.SetAsLastSibling();
+
+        int currentIndex = draggedGroup.root.GetSiblingIndex() - 1;
+        HashSet<BlockGroup> sortedGroups = new();
+
+        for (int i = 0; i < hitBlocks.Count; i++)
+        {
+            Block hit = hitBlocks[i];
+            if (hit == null || hit.group == null || hit.group.root == null)
+                continue;
+
+            if (!sortedGroups.Add(hit.group))
+                continue;
+
+            hit.group.root.SetSiblingIndex(Mathf.Max(0, currentIndex));
+            currentIndex--;
+        }
+    }
+
+    /// <summary>
+    /// Lấy block tại 1 ô grid.
+    /// Nếu ngoài biên thì trả null.
+    /// </summary>
+    public Block GetBlockAt(Vector2Int pos)
+    {
+        return IsInside(pos) ? grid[pos.x, pos.y] : null;
+    }
+
+    /// <summary>
+    /// Kiểm tra 1 tọa độ grid có nằm trong board không.
+    /// </summary>
+    public bool IsInside(Vector2Int pos)
+    {
+        return pos.x >= 0 && pos.x < rows && pos.y >= 0 && pos.y < cols;
+    }
+
+    /// <summary>
+    /// Đồng bộ lại ma trận grid từ danh sách currentBlocks.
+    /// Dùng sau khi move/swap/push/shuffle để bảo đảm board state đúng.
+    /// </summary>
+    public void RebuildGridFromBlocks()
+    {
+        if (grid == null || grid.GetLength(0) != rows || grid.GetLength(1) != cols)
+            grid = new Block[rows, cols];   
+        else
+            System.Array.Clear(grid, 0, grid.Length);
+
+        for (int i = 0; i < currentBlocks.Count; i++)
+        {
+            Block block = currentBlocks[i];
+            if (block == null) continue;
+
+            if (!IsInside(block.gridPos))
+            {
+                Debug.LogError($"Block out of range: {block.name} => {block.gridPos}");
+                continue;
+            }
+
+            if (grid[block.gridPos.x, block.gridPos.y] != null)
+                Debug.LogWarning($"Duplicate gridPos detected at {block.gridPos}. Last write wins.");
+
+            grid[block.gridPos.x, block.gridPos.y] = block;
         }
     }
 }
