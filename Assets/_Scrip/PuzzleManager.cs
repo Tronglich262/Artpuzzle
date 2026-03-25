@@ -119,174 +119,281 @@ public class PuzzleManager : MonoBehaviour
     /// Di chuyển group block theo offset.
     /// Nếu có block bị chặn sẽ đẩy chúng sang vị trí trống gần nhất.
     /// </summary>
-    public bool MoveGroupWithPush(BlockGroup draggedGroup, Vector2Int offset, bool animate = true)
+    public bool MoveGroupWithPush(
+    BlockGroup draggedGroup,
+    Vector2Int offset,
+    BlockDragHandler.DragMoveType moveType,
+    bool animate = true)
     {
         var finalPositions = new Dictionary<Block, Vector2Int>(draggedGroup.blocks.Count);
-        var occupied = new HashSet<Vector2Int>();
+        var occupiedTargets = new HashSet<Vector2Int>();
 
+        // ===== TÍNH TOÁN VỊ TRÍ CUỐI CỦA GROUP ĐANG KÉO =====
         foreach (var b in draggedGroup.blocks)
         {
-            var target = b.gridPos + offset;
+            Vector2Int target = b.gridPos + offset;
 
             if (target.x < 0 || target.x >= rows || target.y < 0 || target.y >= cols)
                 return false;
 
             finalPositions[b] = target;
-            occupied.Add(target);
+            occupiedTargets.Add(target);
         }
 
-        // ===== LẤY BLOCK BỊ ĐỤNG =====
+        // ===== TÌM CÁC BLOCK BỊ ĐỤNG =====
         var hitBlocks = new List<Block>();
+        var hitSet = new HashSet<Block>();
 
         foreach (var b in draggedGroup.blocks)
         {
-            var target = b.gridPos + offset;
+            Vector2Int target = finalPositions[b];
 
             var hit = currentBlocks.FirstOrDefault(x =>
-                x.group != draggedGroup && x.gridPos == target);
+                x != null &&
+                x.group != draggedGroup &&
+                x.gridPos == target);
 
-            if (hit != null)
+            if (hit != null && !hitSet.Contains(hit))
+            {
                 hitBlocks.Add(hit);
+                hitSet.Add(hit);
+            }
         }
 
-        // ===== CHECK SWAP =====
+        // ===== THỬ SWAP ĐÚNG THEO TARGET THỰC TẾ =====
         bool canSwap = hitBlocks.Count == draggedGroup.blocks.Count;
 
         if (canSwap)
         {
-            // Sort để mapping ổn định
-            var draggedSorted = draggedGroup.blocks
-                .OrderBy(b => b.gridPos.x)
-                .ThenBy(b => b.gridPos.y)
-                .ToList();
+            var swapPairs = new List<(Block dragged, Block hit)>();
+            var usedHits = new HashSet<Block>();
 
-            var hitSorted = hitBlocks
-                .OrderBy(b => b.gridPos.x)
-                .ThenBy(b => b.gridPos.y)
-                .ToList();
-
-            // ===== SWAP 1-1 =====
-            for (int i = 0; i < draggedSorted.Count; i++)
+            foreach (var dragged in draggedGroup.blocks)
             {
-                var a = draggedSorted[i];
-                var b = hitSorted[i];
+                Vector2Int target = finalPositions[dragged];
 
-                Vector2Int temp = a.gridPos;
-                a.gridPos = b.gridPos;
-                b.gridPos = temp;
+                var hit = currentBlocks.FirstOrDefault(x =>
+                    x != null &&
+                    x.group != draggedGroup &&
+                    x.gridPos == target);
+
+                if (hit == null || usedHits.Contains(hit))
+                {
+                    canSwap = false;
+                    break;
+                }
+
+                swapPairs.Add((dragged, hit));
+                usedHits.Add(hit);
+            }
+
+            if (canSwap)
+            {
+                foreach (var pair in swapPairs)
+                {
+                    Vector2Int temp = pair.dragged.gridPos;
+                    pair.dragged.gridPos = pair.hit.gridPos;
+                    pair.hit.gridPos = temp;
+                }
             }
         }
-        else
+
+        // ===== NẾU KHÔNG SWAP ĐƯỢC THÌ PUSH =====
+        if (!canSwap)
         {
-            // ===== PUSH LOGIC (fallback) =====
+            bool pushSuccess = PushHitBlocks(hitBlocks, draggedGroup, finalPositions, occupiedTargets, moveType);
 
-            var available = new List<Vector2Int>(GetEmptyPositions());
-
-            foreach (var b in draggedGroup.blocks)
-                available.Add(b.gridPos);
-
-            available.RemoveAll(pos => occupied.Contains(pos));
-
-            var used = new HashSet<Vector2Int>();
-            var hitMoves = new Dictionary<Block, Vector2Int>(hitBlocks.Count);
-
-            foreach (var hb in hitBlocks)
-            {
-                Vector2Int bestSpot = default;
-                bool found = false;
-
-                // ===== 1. CỘT
-                var sameColumn = available
-                    .Where(pos => pos.y == hb.gridPos.y && !used.Contains(pos))
-                    .ToList();
-
-                if (sameColumn.Count > 0)
-                {
-                    // chọn bất kỳ 
-                    bestSpot = sameColumn[0];
-                    found = true;
-                }
-                else
-                {
-                    // ===== 2. HÀNG (ưu tiên tuyệt đối) =====
-                    var sameRow = available
-                        .Where(pos => pos.x == hb.gridPos.x && !used.Contains(pos))
-                        .ToList();
-
-                    if (sameRow.Count > 0)
-                    {
-                        bestSpot = sameRow[0];
-                        found = true;
-                    }
-                    else
-                    {
-                        // ===== 3. NEAREST =====
-                        float bestDist = float.MaxValue;
-
-                        foreach (var pos in available)
-                        {
-                            if (used.Contains(pos)) continue;
-
-                            float dist = (hb.gridPos - pos).sqrMagnitude;
-
-                            if (dist < bestDist)
-                            {
-                                bestDist = dist;
-                                bestSpot = pos;
-                                found = true;
-                            }
-                        }
-                    }
-                }
-
-                if (!found) return false;
-
-                hitMoves[hb] = bestSpot;
-                used.Add(bestSpot);
-            }
-
-            foreach (var hb in hitBlocks)
-            {
-                if (hb.group.blocks.Count > 1)
-                    hb.group.SplitByBlocks(new List<Block> { hb }, transform);
-
-                hb.gridPos = hitMoves[hb];
-            }
+            if (!pushSuccess)
+                return false;
 
             foreach (var b in draggedGroup.blocks)
+            {
                 b.gridPos = finalPositions[b];
+            }
         }
 
         // ===== UPDATE UI =====
         UpdateAllBlockPositions(animate);
         ValidateAllGroups();
         Invoke(nameof(CheckAndMergeGroups), 0.4f);
+
         var allGroups = currentBlocks
+            .Where(b => b != null && b.group != null)
             .Select(b => b.group)
             .Distinct()
             .ToList();
 
         foreach (var g in allGroups)
         {
-            g.SplitIfDisconnected(transform);
+            if (g != null)
+                g.SplitIfDisconnected(transform);
         }
 
         // ===== SORT LAYER =====
-        draggedGroup.root.SetAsLastSibling();
-
-        int topIndex = draggedGroup.root.GetSiblingIndex();
-        int currentIndex = topIndex - 1;
-
-        foreach (var hb in hitBlocks)
+        if (draggedGroup.root != null)
         {
-            if (hb != null && hb.group != null && hb.group.root != null)
+            draggedGroup.root.SetAsLastSibling();
+
+            int topIndex = draggedGroup.root.GetSiblingIndex();
+            int currentIndex = topIndex - 1;
+
+            foreach (var hb in hitBlocks)
             {
-                hb.group.root.SetSiblingIndex(currentIndex);
-                currentIndex--;
+                if (hb != null && hb.group != null && hb.group.root != null)
+                {
+                    hb.group.root.SetSiblingIndex(Mathf.Max(0, currentIndex));
+                    currentIndex--;
+                }
             }
         }
 
         return true;
+    }
+
+    private bool PushHitBlocks(
+        List<Block> hitBlocks,
+        BlockGroup draggedGroup,
+        Dictionary<Block, Vector2Int> finalPositions,
+        HashSet<Vector2Int> occupiedTargets,
+        BlockDragHandler.DragMoveType moveType)
+    {
+        var available = new List<Vector2Int>(GetEmptyPositions());
+
+        // cho phép hit block được đẩy vào vị trí cũ của dragged group
+        foreach (var b in draggedGroup.blocks)
+        {
+            if (!available.Contains(b.gridPos))
+                available.Add(b.gridPos);
+        }
+
+        // loại bỏ các ô mà dragged group sắp chiếm
+        available.RemoveAll(pos => occupiedTargets.Contains(pos));
+
+        var used = new HashSet<Vector2Int>();
+        var hitMoves = new Dictionary<Block, Vector2Int>();
+
+        foreach (var hb in hitBlocks)
+        {
+            if (hb == null) continue;
+
+            bool found = TryFindBestPushSpot(
+                hb.gridPos,
+                available,
+                used,
+                moveType,
+                out Vector2Int bestSpot);
+
+            if (!found)
+                return false;
+
+            hitMoves[hb] = bestSpot;
+            used.Add(bestSpot);
+        }
+
+        foreach (var hb in hitBlocks)
+        {
+            if (hb == null) continue;
+
+            if (hb.group != null && hb.group.blocks.Count > 1)
+            {
+                hb.group.SplitByBlocks(new List<Block> { hb }, transform);
+            }
+
+            hb.gridPos = hitMoves[hb];
+        }
+
+        return true;
+    }
+
+    private bool TryFindBestPushSpot(
+        Vector2Int origin,
+        List<Vector2Int> available,
+        HashSet<Vector2Int> used,
+        BlockDragHandler.DragMoveType moveType,
+        out Vector2Int bestSpot)
+    {
+        bestSpot = default;
+
+        var candidates = available
+            .Where(pos => !used.Contains(pos))
+            .ToList();
+
+        if (candidates.Count == 0)
+            return false;
+
+        // Ưu tiên theo hướng kéo
+        IEnumerable<Vector2Int> prioritized = null;
+
+        switch (moveType)
+        {
+            case BlockDragHandler.DragMoveType.Horizontal:
+                {
+                    // cùng hàng trước
+                    prioritized = candidates.Where(pos => pos.x == origin.x);
+                    break;
+                }
+
+            case BlockDragHandler.DragMoveType.Vertical:
+                {
+                    // cùng cột trước
+                    prioritized = candidates.Where(pos => pos.y == origin.y);
+                    break;
+                }
+
+            case BlockDragHandler.DragMoveType.Diagonal:
+                {
+                    // cùng đường chéo trước
+                    prioritized = candidates.Where(pos =>
+                        Mathf.Abs(pos.x - origin.x) == Mathf.Abs(pos.y - origin.y));
+                    break;
+                }
+
+            default:
+                {
+                    prioritized = Enumerable.Empty<Vector2Int>();
+                    break;
+                }
+        }
+
+        var prioritizedList = prioritized.ToList();
+
+        if (prioritizedList.Count > 0)
+        {
+            float bestDist = float.MaxValue;
+
+            foreach (var pos in prioritizedList)
+            {
+                float dist = (origin - pos).sqrMagnitude;
+
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestSpot = pos;
+                }
+            }
+
+            return true;
+        }
+
+        // fallback: lấy ô gần nhất
+        {
+            float bestDist = float.MaxValue;
+            bool found = false;
+
+            foreach (var pos in candidates)
+            {
+                float dist = (origin - pos).sqrMagnitude;
+
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestSpot = pos;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
     }
 
     /// <summary>
