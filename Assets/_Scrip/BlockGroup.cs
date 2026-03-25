@@ -13,7 +13,7 @@ public class BlockGroup
     /// </summary>
     public void Merge(BlockGroup other)
     {
-        if (other == null || other == this || other.root == null) return;
+        if (other == null || other == this || other.root == null || root == null) return;
 
         root.SetAsLastSibling();
 
@@ -28,6 +28,7 @@ public class BlockGroup
         foreach (var b in other.blocks)
         {
             if (b == null) continue;
+            if (blocks.Contains(b)) continue;
 
             b.group = this;
             b.transform.SetParent(root, true);
@@ -48,23 +49,21 @@ public class BlockGroup
         DOTween.Kill(other.root);
         GameObject.Destroy(other.root.gameObject);
         other.blocks.Clear();
+        other.root = null;
 
         foreach (var b in blocks)
         {
             if (b != null) b.transform.localScale = Vector3.one;
         }
 
-        if (root != null)
-        {
-            root.localScale = Vector3.one;
-            root.DOScale(1.1f, 0.2f)
-                .SetEase(Ease.OutQuad)
-                .OnComplete(() =>
-                {
-                    if (root != null)
-                        root.DOScale(1f, 0.2f).SetEase(Ease.OutQuad);
-                });
-        }
+        root.localScale = Vector3.one;
+        root.DOScale(1.1f, 0.2f)
+            .SetEase(Ease.OutQuad)
+            .OnComplete(() =>
+            {
+                if (root != null)
+                    root.DOScale(1f, 0.2f).SetEase(Ease.OutQuad);
+            });
     }
 
     /// <summary>
@@ -80,8 +79,9 @@ public class BlockGroup
         rootObj.transform.SetParent(parent, false);
         newGroup.root = rootObj.transform;
 
-        foreach (var b in blocksToExtract)
+        for (int i = blocksToExtract.Count - 1; i >= 0; i--)
         {
+            Block b = blocksToExtract[i];
             if (b == null) continue;
             if (!blocks.Contains(b)) continue;
 
@@ -93,6 +93,12 @@ public class BlockGroup
 
         UpdateGroupVisuals();
         newGroup.UpdateGroupVisuals();
+
+        if (blocks.Count == 0 && root != null)
+        {
+            GameObject.Destroy(root.gameObject);
+            root = null;
+        }
     }
 
     /// <summary>
@@ -101,18 +107,14 @@ public class BlockGroup
     /// </summary>
     public void UpdateGroupVisuals()
     {
-        if (blocks.Count == 0) return;
-
-        if (blocks.Count == 1)
+        for (int i = 0; i < blocks.Count; i++)
         {
-            if (blocks[0] != null) blocks[0].SetOutline(true);
-            return;
+            if (blocks[i] != null)
+                blocks[i].SetOutline(false);
         }
 
-        foreach (var b in blocks)
-        {
-            if (b != null) b.SetOutline(false);
-        }
+        if (blocks.Count == 1 && blocks[0] != null)
+            blocks[0].SetOutline(true);
     }
 
     /// <summary>

@@ -10,26 +10,49 @@ public class Block : MonoBehaviour
 
     [HideInInspector] public BlockGroup group;
     [HideInInspector] public Vector2 targetPosition;
+
+    private Outline cachedOutline;
+    private RectTransform cachedRectTransform;
+    private Transform cachedTransform;
+
+    private void Awake()
+    {
+        cachedOutline = GetComponent<Outline>();
+        cachedRectTransform = GetComponent<RectTransform>();
+        cachedTransform = transform;
+
+        if (img == null)
+            img = GetComponent<Image>();
+    }
+
     public void SetOutline(bool active)
     {
-        var outline = GetComponent<Outline>();
-        if (outline != null) outline.enabled = active;
+        if (cachedOutline != null)
+            cachedOutline.enabled = active;
     }
 
     /// <summary>
-    /// Cập nhật vị trí và scale của block theo targetPosition
-    /// bằng tween để tạo chuyển động mượt.
+    /// Cập nhật vị trí của block theo targetPosition.
+    /// Chỉ reset scale nếu đang lệch đáng kể để tránh đạp vào visual state khác.
     /// </summary>
-    public void UpdateTransform()
+    public void UpdateTransform(float duration = 0.05f, bool resetScale = true)
     {
-        RectTransform rt = GetComponent<RectTransform>();
-        if (rt == null) return;
+        if (cachedRectTransform == null)
+            return;
 
-        float duration = 0.05f;
-        rt.DOKill(true);
-        transform.DOKill(true);
+        cachedRectTransform.DOKill(false);
 
-        rt.DOAnchorPos(targetPosition, duration).SetEase(Ease.OutCubic);
-        transform.DOScale(Vector3.one, duration);
+        cachedRectTransform
+            .DOAnchorPos(targetPosition, duration)
+            .SetEase(Ease.OutCubic);
+
+        if (resetScale && cachedTransform != null)
+        {
+            if ((cachedTransform.localScale - Vector3.one).sqrMagnitude > 0.0001f)
+            {
+                cachedTransform.DOKill(false);
+                cachedTransform.DOScale(Vector3.one, duration);
+            }
+        }
     }
 }

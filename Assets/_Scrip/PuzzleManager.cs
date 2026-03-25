@@ -145,21 +145,22 @@ public class PuzzleManager : MonoBehaviour
     /// 5. Cập nhật grid, position, group merge/split
     /// </summary>
     public bool MoveGroupWithPush(
-        BlockGroup draggedGroup,
-        Vector2Int offset,
-        BlockDragHandler.DragMoveType moveType,
-        bool animate = true)
+    BlockGroup draggedGroup,
+    Vector2Int offset,
+    BlockDragHandler.DragMoveType moveType,
+    bool animate = true)
     {
         if (draggedGroup == null || draggedGroup.blocks.Count == 0)
             return false;
 
         List<Block> draggedBlocks = GetValidBlocks(draggedGroup.blocks);
-        HashSet<Block> draggedSet = new(draggedBlocks);
+        if (draggedBlocks.Count == 0)
+            return false;
 
+        HashSet<Block> draggedSet = new(draggedBlocks);
         Dictionary<Block, Vector2Int> finalPositions = new(draggedBlocks.Count);
         HashSet<Vector2Int> occupiedTargets = new();
 
-        // Tính vị trí đích cho toàn bộ block đang drag
         for (int i = 0; i < draggedBlocks.Count; i++)
         {
             Block block = draggedBlocks[i];
@@ -168,17 +169,18 @@ public class PuzzleManager : MonoBehaviour
             if (!IsInside(target))
                 return false;
 
+            if (!occupiedTargets.Add(target))
+            {
+                Debug.LogError($"Duplicate target detected while moving group: {target}");
+                return false;
+            }
+
             finalPositions[block] = target;
-            occupiedTargets.Add(target);
         }
 
-        // Lấy danh sách block bị va chạm ở vị trí đích
         List<Block> hitBlocks = CollectHitBlocks(draggedBlocks, draggedSet, finalPositions);
-
-        // Thử swap trước
         bool swapped = TrySwapBlocks(draggedBlocks, draggedSet, finalPositions);
 
-        // Nếu không swap được thì thử push
         if (!swapped)
         {
             if (!PushHitBlocks(hitBlocks, draggedGroup, occupiedTargets, moveType))
@@ -186,16 +188,13 @@ public class PuzzleManager : MonoBehaviour
 
             ApplyDraggedPositions(draggedBlocks, finalPositions);
         }
-
-        // Đồng bộ lại grid + transform + logic group
-        RebuildGridFromBlocks();
-        UpdateAllBlockPositions(animate);
+        RebuildGridFromBlocksStrict();
         ValidateAllGroups();
-        Invoke(nameof(CheckAndMergeGroups), 0.4f);
-
         SplitDisconnectedGroups();
+        Invoke(nameof(CheckAndMergeGroups), 0.4f);
+        RebuildGridFromBlocksStrict();
         SortDraggedAndHitLayers(draggedGroup, hitBlocks);
-        RebuildGridFromBlocks();
+        UpdateAllBlockPositions(animate);
 
         return true;
     }
@@ -486,14 +485,7 @@ public class PuzzleManager : MonoBehaviour
     /// </summary>
     public void UpdateAllBlockPositions(bool animate = true)
     {
-        int total = 0;
-        for (int i = 0; i < currentBlocks.Count; i++)
-        {
-            if (currentBlocks[i] != null)
-                total++;
-        }
-
-        int completed = 0;
+        List<(Block block, RectTransform rt, Vector2 snappedPos)> validTargets = new();
 
         for (int i = 0; i < currentBlocks.Count; i++)
         {
@@ -511,23 +503,49 @@ public class PuzzleManager : MonoBehaviour
                 Mathf.Round(block.targetPosition.y)
             );
 
-            if (!animate)
+            validTargets.Add((block, rt, snappedPos));
+        }
+
+        if (!animate)
+        {
+            for (int i = 0; i < validTargets.Count; i++)
             {
-                rt.anchoredPosition = snappedPos;
-                continue;
+                validTargets[i].rt.anchoredPosition = validTargets[i].snappedPos;
             }
 
-            rt.DOAnchorPos(snappedPos, 0.5f)
+            isTweening = false;
+            return;
+        }
+
+        if (validTargets.Count == 0)
+        {
+            isTweening = false;
+            return;
+        }
+
+        isTweening = true;
+        int completed = 0;
+        int total = validTargets.Count;
+
+        for (int i = 0; i < validTargets.Count; i++)
+        {
+            var item = validTargets[i];
+
+            item.rt.DOAnchorPos(item.snappedPos, 0.5f)
                 .SetEase(Ease.OutCubic)
                 .OnComplete(() =>
                 {
                     completed++;
                     if (completed >= total)
                         isTweening = false;
+                })
+                .OnKill(() =>
+                {
+                    completed++;
+                    if (completed >= total)
+                        isTweening = false;
                 });
         }
-
-        isTweening = animate;
     }
 
     /// <summary>
@@ -601,7 +619,7 @@ public class PuzzleManager : MonoBehaviour
             positions.RemoveAt(rnd);
         }
 
-        RebuildGridFromBlocks();
+        RebuildGridFromBlocksStrict();
         UpdateAllBlockPositions();
     }
 
@@ -641,31 +659,39 @@ public class PuzzleManager : MonoBehaviour
             if (block != null && block.group != null && uniqueGroups.Add(block.group))
                 groups.Add(block.group);
         }
-
         for (int i = 0; i < groups.Count; i++)
         {
             BlockGroup group = groups[i];
-            if (group == null) continue;
+            if (group == null || group.blocks == null || group.blocks.Count <= 1)
+                continue;
 
             List<Block> snapshot = new(group.blocks);
+            List<Block> isolatedBlocks = new();
 
             for (int j = 0; j < snapshot.Count; j++)
             {
                 Block block = snapshot[j];
-                if (block == null) continue;
-                if (snapshot.Count <= 1) break;
-
+                if (block == null)
+                    continue;
+                if (block.group != group)
+                    continue;
                 List<Block> neighbors = GetCorrectNeighborsInSameGroup(block, group);
                 if (neighbors.Count == 0)
-                    group.SplitByBlocks(new List<Block> { block }, transform);
+                    isolatedBlocks.Add(block);
             }
+            if (isolatedBlocks.Count == 0)
+                continue;
+            if (isolatedBlocks.Count >= snapshot.Count)
+                continue;
+
+            group.SplitByBlocks(isolatedBlocks, transform);
         }
     }
 
     /// <summary>
     /// Tách các group bị đứt kết nối thành nhiều subgroup độc lập.
     /// </summary>
-    private void SplitDisconnectedGroups()
+    public void SplitDisconnectedGroups()
     {
         List<BlockGroup> groups = new();
         HashSet<BlockGroup> uniqueGroups = new();
@@ -733,17 +759,25 @@ public class PuzzleManager : MonoBehaviour
     /// Đồng bộ lại ma trận grid từ danh sách currentBlocks.
     /// Dùng sau khi move/swap/push/shuffle để bảo đảm board state đúng.
     /// </summary>
-    public void RebuildGridFromBlocks()
+    public void RebuildGridFromBlocksStrict()
     {
         if (grid == null || grid.GetLength(0) != rows || grid.GetLength(1) != cols)
-            grid = new Block[rows, cols];   
+            grid = new Block[rows, cols];
         else
             System.Array.Clear(grid, 0, grid.Length);
+
+        HashSet<Block> visited = new();
 
         for (int i = 0; i < currentBlocks.Count; i++)
         {
             Block block = currentBlocks[i];
             if (block == null) continue;
+
+            if (!visited.Add(block))
+            {
+                Debug.LogError($"Duplicate block reference in currentBlocks: {block.name}");
+                continue;
+            }
 
             if (!IsInside(block.gridPos))
             {
@@ -751,8 +785,14 @@ public class PuzzleManager : MonoBehaviour
                 continue;
             }
 
-            if (grid[block.gridPos.x, block.gridPos.y] != null)
-                Debug.LogWarning($"Duplicate gridPos detected at {block.gridPos}. Last write wins.");
+            Block existing = grid[block.gridPos.x, block.gridPos.y];
+            if (existing != null && existing != block)
+            {
+                Debug.LogError(
+                    $"Duplicate gridPos detected at {block.gridPos}. Existing={existing.name}, New={block.name}"
+                );
+                continue;
+            }
 
             grid[block.gridPos.x, block.gridPos.y] = block;
         }

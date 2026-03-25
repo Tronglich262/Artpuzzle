@@ -1,6 +1,7 @@
+using DG.Tweening;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using DG.Tweening;
 
 public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
 {
@@ -40,7 +41,14 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     /// </summary>
     public void OnPointerDown(PointerEventData eventData)
     {
+        if (puzzle == null || canvas == null || block == null)
+            return;
+
         if (puzzle.isTweening || Time.time - lastInputTime < inputCooldown)
+            return;
+
+        RectTransform rootRect = GetRootRectSafe();
+        if (rootRect == null)
             return;
 
         lastInputTime = Time.time;
@@ -48,7 +56,6 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         currentDragMoveType = DragMoveType.None;
         puzzle.SetTweening(true);
 
-        RectTransform rootRect = GetRootRect();
         rootRect.DOKill();
         rootRect.localScale = Vector3.one;
         rootRect.SetAsLastSibling();
@@ -72,6 +79,9 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     {
         if (!isDragging) return;
 
+        RectTransform rootRect = GetRootRectSafe();
+        if (rootRect == null) return;
+
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             canvas.GetComponent<RectTransform>(),
             eventData.position,
@@ -81,9 +91,8 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
         Vector2 delta = currentPointer - pointerStart;
         currentDragMoveType = GetMoveTypeFromDelta(delta);
-        GetRootRect().anchoredPosition = rootStartPos + delta;
+        rootRect.anchoredPosition = rootStartPos + delta;
     }
-
     /// <summary>
     /// Kết thúc kéo, tính offset thả, kiểm tra khả năng di chuyển,
     /// sau đó move group hoặc reset về vị trí cũ nếu không hợp lệ.
@@ -100,7 +109,13 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             return;
         }
 
-        RectTransform rootRect = GetRootRect();
+        RectTransform rootRect = GetRootRectSafe();
+        if (rootRect == null)
+        {
+            puzzle.SetTweening(false);
+            return;
+        }
+
         rootRect.DOKill();
         rootRect.DOScale(1f, 0.15f)
             .SetEase(Ease.OutQuad)
@@ -125,17 +140,9 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
 
         rootRect.anchoredPosition = Vector2.zero;
         SnapDraggedGroupVisual(draggedGroup);
-        puzzle.SetTweening(false);
-    }
 
-    /// <summary>
-    /// Lấy RectTransform root của group hiện tại đang chứa block.
-    /// </summary>
-    private RectTransform GetRootRect()
-    {
-        return block.group.root.GetComponent<RectTransform>();
     }
-
+  
     /// <summary>
     /// Tính toán độ lệch grid từ vị trí hiện tại đến vị trí thả,
     /// dựa trên anchoredPosition của block và root group.
@@ -193,10 +200,13 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     /// </summary>
     private void ResetGroup(BlockGroup group)
     {
-        if (group == null) return;
+        if (group == null)
+        {
+            puzzle.SetTweening(false);
+            return;
+        }
 
-        int total = group.blocks.Count;
-        int done = 0;
+        List<(Block block, RectTransform rt)> validBlocks = new();
 
         for (int i = 0; i < group.blocks.Count; i++)
         {
@@ -206,10 +216,43 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             RectTransform rt = b.GetComponent<RectTransform>();
             if (rt == null) continue;
 
-            rt.DOKill(true);
-            rt.DOAnchorPos(b.targetPosition, 0.2f)
+            validBlocks.Add((b, rt));
+        }
+
+        if (validBlocks.Count == 0)
+        {
+            puzzle.SetTweening(false);
+
+            if (group.root != null)
+            {
+                RectTransform emptyRootRt = group.root.GetComponent<RectTransform>();
+                if (emptyRootRt != null)
+                {
+                    emptyRootRt.DOKill();
+                    emptyRootRt.localScale = Vector3.one;
+                    emptyRootRt.anchoredPosition = Vector2.zero;
+                }
+            }
+
+            return;
+        }
+
+        int done = 0;
+        int total = validBlocks.Count;
+
+        for (int i = 0; i < validBlocks.Count; i++)
+        {
+            var item = validBlocks[i];
+            item.rt.DOKill(true);
+            item.rt.DOAnchorPos(item.block.targetPosition, 0.2f)
                 .SetEase(Ease.OutQuad)
                 .OnComplete(() =>
+                {
+                    done++;
+                    if (done >= total)
+                        puzzle.SetTweening(false);
+                })
+                .OnKill(() =>
                 {
                     done++;
                     if (done >= total)
@@ -217,13 +260,23 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
                 });
         }
 
-        if (group.root == null) return;
+        if (group.root != null)
+        {
+            RectTransform rootRt = group.root.GetComponent<RectTransform>();
+            if (rootRt != null)
+            {
+                rootRt.DOKill();
+                rootRt.localScale = Vector3.one;
+                rootRt.anchoredPosition = Vector2.zero;
+            }
+        }
+    }
+    private RectTransform GetRootRectSafe()
+    {
+        if (block == null) return null;
+        if (block.group == null) return null;
+        if (block.group.root == null) return null;
 
-        RectTransform rootRt = group.root.GetComponent<RectTransform>();
-        if (rootRt == null) return;
-
-        rootRt.DOKill();
-        rootRt.localScale = Vector3.one;
-        rootRt.anchoredPosition = Vector2.zero;
+        return block.group.root.GetComponent<RectTransform>();
     }
 }
