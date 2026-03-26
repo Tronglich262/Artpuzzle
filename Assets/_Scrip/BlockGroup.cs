@@ -25,44 +25,53 @@ public class BlockGroup
     /// Sắp local position của toàn bộ block theo root group.
     /// Nếu snapRoot=true thì root nhảy về đúng vị trí anchor.
     /// </summary>
-    public void RebuildLocalLayout(bool snapRoot = true)
+    public void RebuildLocalLayout(bool snapRoot = true, bool animateChildren = false, float childDuration = 0.07f)
+{
+    if (root == null || blocks == null || blocks.Count == 0)
+        return;
+
+    RectTransform rootRect = root as RectTransform;
+    if (rootRect == null)
+        return;
+
+    Block anchor = GetAnchorBlock();
+    if (anchor == null)
+        return;
+
+    Vector2 anchorBoardPos = PuzzleManager.Instance.GridToPosition(anchor.gridPos);
+
+    if (snapRoot)
+        rootRect.anchoredPosition = anchorBoardPos;
+
+    for (int i = 0; i < blocks.Count; i++)
     {
-        if (root == null || blocks == null || blocks.Count == 0)
-            return;
+        Block b = blocks[i];
+        if (b == null)
+            continue;
 
-        RectTransform rootRect = root as RectTransform;
-        if (rootRect == null)
-            return;
+        RectTransform blockRect = b.transform as RectTransform;
+        if (blockRect == null)
+            continue;
 
-        Block anchor = GetAnchorBlock();
-        if (anchor == null)
-            return;
+        Vector2 blockBoardPos = PuzzleManager.Instance.GridToPosition(b.gridPos);
+        Vector2 localOffset = blockBoardPos - anchorBoardPos;
 
-        Vector2 anchorBoardPos = PuzzleManager.Instance.GridToPosition(anchor.gridPos);
+        blockRect.DOKill(false);
+        b.targetPosition = localOffset;
 
-        if (snapRoot)
-            rootRect.anchoredPosition = anchorBoardPos;
-
-        for (int i = 0; i < blocks.Count; i++)
+        if (animateChildren)
         {
-            Block b = blocks[i];
-            if (b == null)
-                continue;
-
-            RectTransform blockRect = b.transform as RectTransform;
-            if (blockRect == null)
-                continue;
-
-            blockRect.DOKill(false);
-
-            Vector2 blockBoardPos = PuzzleManager.Instance.GridToPosition(b.gridPos);
-            Vector2 localOffset = blockBoardPos - anchorBoardPos;
-
-            blockRect.anchoredPosition = localOffset;
-            b.targetPosition = localOffset;
-            blockRect.localScale = Vector3.one;
+            blockRect.DOAnchorPos(localOffset, childDuration)
+                .SetEase(Ease.OutCubic);
         }
+        else
+        {
+            blockRect.anchoredPosition = localOffset;
+        }
+
+        blockRect.localScale = Vector3.one;
     }
+}
 
     /// <summary>
     /// Gộp group khác vào group hiện tại.
@@ -128,7 +137,7 @@ public class BlockGroup
     /// <summary>
     /// Tách 1 số block khỏi group hiện tại để tạo group mới.
     /// </summary>
-    public void SplitByBlocks(List<Block> blocksToExtract, Transform parent)
+    public void SplitByBlocks(List<Block> blocksToExtract, Transform parent, bool keepWorldVisual = true)
     {
         if (blocksToExtract == null || blocksToExtract.Count == 0)
             return;
@@ -147,23 +156,48 @@ public class BlockGroup
 
         newGroup.root = rootRect;
 
-        for (int i = blocksToExtract.Count - 1; i >= 0; i--)
+        // Giữ lại vị trí world hiện tại của block đầu tiên để root mới không bị snap
+        Vector3 firstWorldPos = Vector3.zero;
+        bool hasFirstWorldPos = false;
+
+        for (int i = 0; i < blocksToExtract.Count; i++)
         {
             Block b = blocksToExtract[i];
-            if (b == null) continue;
-            if (!blocks.Contains(b)) continue;
+            if (b == null || !blocks.Contains(b))
+                continue;
+
+            if (!hasFirstWorldPos)
+            {
+                firstWorldPos = b.transform.position;
+                hasFirstWorldPos = true;
+            }
 
             b.group = newGroup;
-            b.transform.SetParent(newGroup.root, true);
+            b.transform.SetParent(newGroup.root, true); // giữ world position
             newGroup.blocks.Add(b);
             blocks.Remove(b);
         }
 
-        UpdateGroupVisuals();
-        newGroup.UpdateGroupVisuals();
+        if (newGroup.blocks.Count == 0)
+        {
+            GameObject.Destroy(rootObj);
+            return;
+        }
 
-        RebuildLocalLayout(true);
-        newGroup.RebuildLocalLayout(true);
+        if (keepWorldVisual && hasFirstWorldPos)
+        {
+            rootRect.position = firstWorldPos;
+            newGroup.RebuildLocalLayout(false, false); // KHÔNG snap root
+        }
+        else
+        {
+            newGroup.RebuildLocalLayout(true, false);
+        }
+
+        UpdateGroupVisuals();
+        RebuildLocalLayout(true, false);
+
+        newGroup.UpdateGroupVisuals();
 
         if (blocks.Count == 0 && root != null)
         {

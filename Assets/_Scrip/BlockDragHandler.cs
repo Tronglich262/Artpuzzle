@@ -13,7 +13,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         Diagonal
     }
 
-    [SerializeField] private float inputCooldown = 0.2f;
+    [SerializeField] private float inputCooldown = 1.5f;
 
     private Canvas canvas;
     private PuzzleManager puzzle;
@@ -59,8 +59,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         rootRect.DOKill();
         rootRect.localScale = Vector3.one;
         rootRect.SetAsLastSibling();
-        rootRect.DOScale(1.1f, 0.1f).SetEase(Ease.OutQuad);
-
+        rootRect.DOScale(1.05f, 0.08f).SetEase(Ease.OutQuad);
         rootStartPos = rootRect.anchoredPosition;
 
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
@@ -117,7 +116,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         }
 
         rootRect.DOKill();
-        rootRect.DOScale(1f, 0.15f)
+        rootRect.DOScale(1f, 0.10f)
             .SetEase(Ease.OutQuad)
             .OnKill(() => rootRect.localScale = Vector3.one)
             .OnComplete(() => rootRect.localScale = Vector3.one);
@@ -137,8 +136,6 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             ResetGroup(draggedGroup);
             return;
         }
-
-        draggedGroup.RebuildLocalLayout(false);
     }
 
     /// <summary>
@@ -146,14 +143,24 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
     /// </summary>
     private Vector2Int GetDropOffset(RectTransform rootRect)
     {
-        RectTransform blockRect = block.GetComponent<RectTransform>();
-        Vector2 boardPos = blockRect.anchoredPosition + rootRect.anchoredPosition;
-        Vector2Int targetGrid = puzzle.PositionToGrid(boardPos);
+        BlockGroup draggedGroup = block.group;
+        if (draggedGroup == null)
+            return Vector2Int.zero;
+
+        Block anchor = draggedGroup.GetAnchorBlock();
+        if (anchor == null)
+            return Vector2Int.zero;
+
+        Vector2 delta = rootRect.anchoredPosition - rootStartPos;
+        if (delta.magnitude < puzzle.blockSize * 0.25f)
+            return Vector2Int.zero;
+
+        Vector2Int targetGrid = puzzle.PositionToGrid(rootRect.anchoredPosition);
 
         targetGrid.x = Mathf.Clamp(targetGrid.x, 0, puzzle.rows - 1);
         targetGrid.y = Mathf.Clamp(targetGrid.y, 0, puzzle.cols - 1);
 
-        return targetGrid - block.gridPos;
+        return targetGrid - anchor.gridPos;
     }
 
     /// <summary>
@@ -211,13 +218,13 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         Vector2 targetRootPos = puzzle.GridToPosition(anchor.gridPos);
 
         rootRt.DOKill(false);
-        rootRt.DOAnchorPos(targetRootPos, 0.2f)
-            .SetEase(Ease.OutQuad)
-            .OnComplete(() =>
-            {
-                rootRt.localScale = Vector3.one;
-                puzzle.SetTweening(false);
-            })
+        rootRt.DOAnchorPos(targetRootPos, 0.16f)
+     .SetEase(Ease.OutCubic)
+             .OnComplete(() =>
+             {
+                 rootRt.localScale = Vector3.one;
+                 puzzle.SetTweening(false);
+             })
             .OnKill(() =>
             {
                 rootRt.localScale = Vector3.one;

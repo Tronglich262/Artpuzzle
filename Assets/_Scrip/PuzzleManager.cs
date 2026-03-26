@@ -1,7 +1,8 @@
+using DG.Tweening;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using DG.Tweening;
 
 public class PuzzleManager : MonoBehaviour
 {
@@ -52,6 +53,7 @@ public class PuzzleManager : MonoBehaviour
     /// </summary>
     private void Start()
     {
+        Application.targetFrameRate = 60;
         GeneratePuzzle();
         ShuffleBlocks();
     }
@@ -147,10 +149,10 @@ public class PuzzleManager : MonoBehaviour
     /// - rebuild grid, split/merge, rồi update UI
     /// </summary>
     public bool MoveGroupWithPush(
-        BlockGroup draggedGroup,
-        Vector2Int offset,
-        BlockDragHandler.DragMoveType moveType,
-        bool animate = true)
+    BlockGroup draggedGroup,
+    Vector2Int offset,
+    BlockDragHandler.DragMoveType moveType,
+    bool animate = true)
     {
         if (draggedGroup == null || draggedGroup.blocks.Count == 0)
             return false;
@@ -172,10 +174,7 @@ public class PuzzleManager : MonoBehaviour
                 return false;
 
             if (!occupiedTargets.Add(target))
-            {
-                Debug.LogError($"Duplicate target detected while moving group: {target}");
                 return false;
-            }
 
             finalPositions[block] = target;
         }
@@ -192,16 +191,35 @@ public class PuzzleManager : MonoBehaviour
         }
 
         RebuildGridFromBlocksStrict();
-        ValidateAllGroups();
-        SplitDisconnectedGroups();
-        Invoke(nameof(CheckAndMergeGroups), 0.4f);
-        RebuildGridFromBlocksStrict();
         SortDraggedAndHitLayers(draggedGroup, hitBlocks);
+
+        // Animate trước
         UpdateAllBlockPositions(animate);
+
+        // Rebuild group sau khi animation chạy xong
+        if (animate)
+        {
+            DOVirtual.DelayedCall(0.5f, () =>
+            {
+                RebuildGridFromBlocksStrict();
+                ValidateAllGroups();
+                SplitDisconnectedGroups();
+                CheckAndMergeGroups();
+                RebuildGridFromBlocksStrict();
+                UpdateAllBlockPositions(false);
+            });
+        }
+        else
+        {
+            ValidateAllGroups();
+            SplitDisconnectedGroups();
+            CheckAndMergeGroups();
+            RebuildGridFromBlocksStrict();
+            UpdateAllBlockPositions(false);
+        }
 
         return true;
     }
-
     /// <summary>
     /// Lọc block khác null từ list đầu vào.
     /// </summary>
@@ -249,6 +267,11 @@ public class PuzzleManager : MonoBehaviour
     /// Thử swap block-by-block.
     /// Chỉ thành công khi mọi target đều có block hợp lệ để đổi chỗ.
     /// </summary>
+    /// <summary>
+    /// Thử swap block-by-block.
+    /// Nếu hit block đang nằm trong group > 1 block thì tách nó ra trước
+    /// để giữ animation swap như block 1-1 bình thường.
+    /// </summary>
     private bool TrySwapBlocks(
         List<Block> draggedBlocks,
         HashSet<Block> draggedSet,
@@ -260,6 +283,7 @@ public class PuzzleManager : MonoBehaviour
         List<(Block dragged, Block hit)> pairs = new List<(Block dragged, Block hit)>(draggedBlocks.Count);
         HashSet<Block> usedHits = new HashSet<Block>();
 
+        // 1. Validate toàn bộ pair swap trước
         for (int i = 0; i < draggedBlocks.Count; i++)
         {
             Block dragged = draggedBlocks[i];
@@ -271,15 +295,75 @@ public class PuzzleManager : MonoBehaviour
             pairs.Add((dragged, hit));
         }
 
+        // 2. Tách các hit block đang thuộc group lớn ra trước
         for (int i = 0; i < pairs.Count; i++)
         {
-            var pair = pairs[i];
-            Vector2Int oldDraggedPos = pair.dragged.gridPos;
-            pair.dragged.gridPos = pair.hit.gridPos;
-            pair.hit.gridPos = oldDraggedPos;
+            Block hit = pairs[i].hit;
+            if (hit == null || hit.group == null)
+                continue;
+
+            if (hit.group.blocks.Count > 1)
+            {
+                SplitSingleBlockForSwap(hit);
+            }
+        }
+
+        // 3. Sau khi split xong mới swap gridPos
+        for (int i = 0; i < pairs.Count; i++)
+        {
+            Block dragged = pairs[i].dragged;
+            Block hit = pairs[i].hit;
+
+            Vector2Int oldDraggedPos = dragged.gridPos;
+            dragged.gridPos = hit.gridPos;
+            hit.gridPos = oldDraggedPos;
         }
 
         return true;
+    }
+    /// <summary>
+    /// Tách 1 block ra khỏi group cũ để phục vụ swap,
+    /// nhưng vẫn giữ nguyên visual position hiện tại.
+    /// </summary>
+    private void SplitSingleBlockForSwap(Block block)
+    {
+        if (block == null || block.group == null || block.group.root == null)
+            return;
+
+        BlockGroup oldGroup = block.group;
+        if (oldGroup.blocks.Count <= 1)
+            return;
+
+        RectTransform blockRect = block.transform as RectTransform;
+        RectTransform oldRoot = oldGroup.root as RectTransform;
+        if (blockRect == null || oldRoot == null)
+            return;
+
+        // Lưu world position hiện tại của block
+        Vector3 worldPos = blockRect.position;
+        Vector3 worldScale = blockRect.lossyScale;
+
+        // Tách block khỏi group cũ
+        oldGroup.SplitByBlocks(new List<Block> { block }, transform, true);
+
+        // Sau split, block đã thuộc group mới
+        BlockGroup newGroup = block.group;
+        RectTransform newRoot = newGroup != null ? newGroup.root as RectTransform : null;
+        if (newRoot == null)
+            return;
+
+        // Giữ root mới ở đúng vị trí visual cũ để tween không bị giật/apply thẳng
+        newRoot.position = worldPos;
+        newRoot.localScale = Vector3.one;
+
+        // block local về 0 cho đúng single root
+        blockRect.SetParent(newRoot, true);
+        blockRect.anchoredPosition = Vector2.zero;
+        blockRect.localScale = Vector3.one;
+
+        // rebuild lại group cũ và group mới
+        oldGroup.RebuildLocalLayout(false);
+        newGroup.RebuildLocalLayout(false);
     }
 
     /// <summary>
@@ -339,7 +423,7 @@ public class PuzzleManager : MonoBehaviour
             if (hit == null) continue;
 
             if (hit.group != null && hit.group.blocks.Count > 1)
-                hit.group.SplitByBlocks(new List<Block> { hit }, transform);
+                hit.group.SplitByBlocks(new List<Block> { hit }, transform, true);
 
             hit.gridPos = hitMoves[hit];
         }
@@ -476,7 +560,8 @@ public class PuzzleManager : MonoBehaviour
     public void UpdateAllBlockPositions(bool animate = true)
     {
         HashSet<BlockGroup> handledGroups = new HashSet<BlockGroup>();
-        List<(RectTransform root, Vector2 targetPos)> groupMoves = new List<(RectTransform, Vector2)>();
+        List<(BlockGroup group, RectTransform root, Vector2 targetPos)> groupMoves =
+            new List<(BlockGroup, RectTransform, Vector2)>();
 
         for (int i = 0; i < currentBlocks.Count; i++)
         {
@@ -497,19 +582,18 @@ public class PuzzleManager : MonoBehaviour
                 continue;
 
             Vector2 targetRootPos = GridToPosition(anchor.gridPos);
-
-            group.RebuildLocalLayout(false);
-
-            rootRect.DOKill(false);
-            groupMoves.Add((rootRect, targetRootPos));
+            groupMoves.Add((group, rootRect, targetRootPos));
         }
 
         if (!animate)
         {
             for (int i = 0; i < groupMoves.Count; i++)
-                groupMoves[i].root.anchoredPosition = groupMoves[i].targetPos;
+            {
+                var item = groupMoves[i];
+                item.group.RebuildLocalLayout(false, false);
+                item.root.anchoredPosition = item.targetPos;
+            }
 
-            isTweening = false;
             return;
         }
 
@@ -527,20 +611,24 @@ public class PuzzleManager : MonoBehaviour
         {
             var item = groupMoves[i];
 
+            item.group.RebuildLocalLayout(false, true, 0.07f);
+
+            item.root.DOKill(false);
+            item.root.localScale = Vector3.one;
             item.root.DOAnchorPos(item.targetPos, 0.5f)
-                .SetEase(Ease.OutCubic)
-                .OnComplete(() =>
-                {
-                    completed++;
-                    if (completed >= total)
-                        isTweening = false;
-                })
-                .OnKill(() =>
-                {
-                    completed++;
-                    if (completed >= total)
-                        isTweening = false;
-                });
+    .SetEase(Ease.OutCubic)
+    .OnComplete(() =>
+    {
+        completed++;
+        if (completed >= total)
+            isTweening = false;
+    })
+    .OnKill(() =>
+    {
+        completed++;
+        if (completed >= total)
+            isTweening = false;
+    });
         }
     }
 
@@ -773,4 +861,4 @@ public class PuzzleManager : MonoBehaviour
             grid[block.gridPos.x, block.gridPos.y] = block;
         }
     }
-}
+}   
