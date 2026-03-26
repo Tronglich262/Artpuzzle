@@ -11,25 +11,54 @@ public class Block : MonoBehaviour
     [HideInInspector] public BlockGroup group;
     [HideInInspector] public Vector2 targetPosition;
 
-    // Hàm bật/tắt viền của riêng mảnh này
-    public void SetOutline(bool active)
+    private Outline cachedOutline;
+    private RectTransform cachedRectTransform;
+    private Transform cachedTransform;
+
+    /// <summary>
+    /// Cache component để dùng nhanh hơn.
+    /// </summary>
+    private void Awake()
     {
-        var outline = GetComponent<Outline>();
-        if (outline != null) outline.enabled = active;
+        cachedOutline = GetComponent<Outline>();
+        cachedRectTransform = GetComponent<RectTransform>();
+        cachedTransform = transform;
+
+        if (img == null)
+            img = GetComponent<Image>();
     }
 
-    public void UpdateTransform()
+    /// <summary>
+    /// Bật/tắt outline của block.
+    /// </summary>
+    public void SetOutline(bool active)
     {
-        RectTransform rt = GetComponent<RectTransform>();
-        if (rt == null) return;
+        if (cachedOutline != null)
+            cachedOutline.enabled = active;
+    }
 
-        float duration = 0.05f;
-        rt.DOKill(true);
-        transform.DOKill(true);
+    /// <summary>
+    /// Tween block tới targetPosition.
+    /// Có thể reset scale về 1 nếu cần.
+    /// </summary>
+    public void UpdateTransform(float duration = 0.05f, bool resetScale = true)
+    {
+        if (cachedRectTransform == null)
+            return;
 
-        rt.DOAnchorPos(targetPosition, duration)
+        cachedRectTransform.DOKill(false);
+
+        cachedRectTransform
+            .DOAnchorPos(targetPosition, duration)
             .SetEase(Ease.OutCubic);
 
-        transform.DOScale(Vector3.one, duration);
+        if (resetScale && cachedTransform != null)
+        {
+            if ((cachedTransform.localScale - Vector3.one).sqrMagnitude > 0.0001f)
+            {
+                cachedTransform.DOKill(false);
+                cachedTransform.DOScale(Vector3.one, duration);
+            }
+        }
     }
 }
