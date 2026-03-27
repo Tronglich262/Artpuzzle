@@ -109,8 +109,6 @@ public class BlockGroup
                 });
             }
         }
-
-        UpdateGroupVisuals();
         RebuildLocalLayout(true);
 
         DOTween.Kill(other.root);
@@ -132,6 +130,8 @@ public class BlockGroup
                 if (root != null)
                     root.DOScale(1f, 0.2f).SetEase(Ease.OutQuad);
             });
+        PuzzleManager.Instance?.RebuildGridFromBlocksStrict();
+        PuzzleManager.Instance?.RefreshAllBorders(false);
     }
 
     /// <summary>
@@ -193,33 +193,14 @@ public class BlockGroup
         {
             newGroup.RebuildLocalLayout(true, false);
         }
-
-        UpdateGroupVisuals();
         RebuildLocalLayout(true, false);
-
-        newGroup.UpdateGroupVisuals();
-
         if (blocks.Count == 0 && root != null)
         {
             GameObject.Destroy(root.gameObject);
             root = null;
         }
-    }
-
-    /// <summary>
-    /// Cập nhật outline:
-    /// group 1 block thì bật outline, nhiều block thì tắt.
-    /// </summary>
-    public void UpdateGroupVisuals()
-    {
-        for (int i = 0; i < blocks.Count; i++)
-        {
-            if (blocks[i] != null)
-                blocks[i].SetOutline(false);
-        }
-
-        if (blocks.Count == 1 && blocks[0] != null)
-            blocks[0].SetOutline(true);
+        PuzzleManager.Instance?.RebuildGridFromBlocksStrict();
+        PuzzleManager.Instance?.RefreshAllBorders(false);
     }
 
     /// <summary>
@@ -299,12 +280,13 @@ public class BlockGroup
                 b.transform.SetParent(newGroup.root, true);
                 newGroup.blocks.Add(b);
             }
-
-            newGroup.UpdateGroupVisuals();
             newGroup.RebuildLocalLayout(true);
         }
 
         if (root != null)
             GameObject.Destroy(root.gameObject);
+        PuzzleManager.Instance?.RebuildGridFromBlocksStrict();
+        PuzzleManager.Instance?.RefreshAllBorders(false);
     }
+
 }

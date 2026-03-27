@@ -31,12 +31,12 @@ public class PuzzleManager : MonoBehaviour
 
     // 4 hướng cơ bản để check neighbor
     private static readonly Vector2Int[] FourDirs =
-    {
-        Vector2Int.up,
-        Vector2Int.down,
-        Vector2Int.left,
-        Vector2Int.right
-    };
+{
+    new Vector2Int(-1, 0), // top
+    new Vector2Int( 1, 0), // bottom
+    new Vector2Int( 0,-1), // left
+    new Vector2Int( 0, 1)  // right
+};
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -90,12 +90,12 @@ public class PuzzleManager : MonoBehaviour
                 group.blocks.Add(block);
 
                 block.transform.SetParent(group.root, false);
-                block.SetOutline(true);
                 group.RebuildLocalLayout(true);
             }
         }
 
         UpdateAllBlockPositions(false);
+        RefreshAllBorders(true);
     }
 
     /// <summary>
@@ -207,6 +207,7 @@ public class PuzzleManager : MonoBehaviour
                 CheckAndMergeGroups();
                 RebuildGridFromBlocksStrict();
                 UpdateAllBlockPositions(false);
+                RefreshAllBorders(false);
             });
         }
         else
@@ -216,6 +217,7 @@ public class PuzzleManager : MonoBehaviour
             CheckAndMergeGroups();
             RebuildGridFromBlocksStrict();
             UpdateAllBlockPositions(false);
+            RefreshAllBorders(true);
         }
 
         return true;
@@ -703,6 +705,7 @@ public class PuzzleManager : MonoBehaviour
 
         RebuildGridFromBlocksStrict();
         UpdateAllBlockPositions();
+        RefreshAllBorders(true);
     }
 
     /// <summary>
@@ -860,5 +863,58 @@ public class PuzzleManager : MonoBehaviour
 
             grid[block.gridPos.x, block.gridPos.y] = block;
         }
+    }
+    public void RefreshAllBorders(bool instant = false)
+    {
+        for (int i = 0; i < currentBlocks.Count; i++)
+        {
+            Block block = currentBlocks[i];
+            if (block == null) continue;
+
+            RefreshBlockBorder(block, instant);
+        }
+    }
+
+    public void RefreshBlockBorder(Block block, bool instant = false)
+    {
+        if (block == null)
+            return;
+
+        bool showTop = true;
+        bool showBottom = true;
+        bool showLeft = true;
+        bool showRight = true;
+
+        Block topNeighbor = GetBlockAt(block.gridPos + new Vector2Int(-1, 0));
+        Block bottomNeighbor = GetBlockAt(block.gridPos + new Vector2Int(1, 0));
+        Block leftNeighbor = GetBlockAt(block.gridPos + new Vector2Int(0, -1));
+        Block rightNeighbor = GetBlockAt(block.gridPos + new Vector2Int(0, 1));
+
+        if (ShouldHideSharedEdge(block, topNeighbor))
+            showTop = false;
+
+        if (ShouldHideSharedEdge(block, bottomNeighbor))
+            showBottom = false;
+
+        if (ShouldHideSharedEdge(block, leftNeighbor))
+            showLeft = false;
+
+        if (ShouldHideSharedEdge(block, rightNeighbor))
+            showRight = false;
+
+        block.SetBorders(showTop, showBottom, showLeft, showRight, instant);
+    }
+    private bool ShouldHideSharedEdge(Block a, Block b)
+    {
+        if (a == null || b == null)
+            return false;
+
+        if (a.group == null || b.group == null)
+            return false;
+
+        if (a.group != b.group)
+            return false;
+
+        return IsCorrectNeighbor(a, b);
     }
 }   

@@ -94,6 +94,16 @@ MonoBehaviour:
   gridPos: {x: 0, y: 0}
   correctPos: {x: 0, y: 0}
   targetPosition: {x: 0, y: 0}
+  borderThickness: 1
+  whiteInset: 0
+  borderAlpha: 1
+  borderFadeDuration: 0.08
+  borderColor: {r: 0, g: 0, b: 0, a: 1}
+  useBlackOutline: 1
+  blackBorderThickness: 1.5
+  blackInset: 1
+  blackBorderAlpha: 0.9
+  blackBorderColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!114 &9032967119508949519
 MonoBehaviour:
   m_ObjectHideFlags: 0
