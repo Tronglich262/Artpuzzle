@@ -1,15 +1,15 @@
 using System.Collections.Generic;
-using UnityEngine;
 using DG.Tweening;
+using UnityEngine;
 
 public class BlockGroup
 {
-    public List<Block> blocks = new List<Block>();
+    public readonly List<Block> blocks = new();
     public Transform root;
 
-    /// <summary>
-    /// Lấy block đầu tiên hợp lệ trong group làm block mốc.
-    /// </summary>
+    private readonly Queue<Block> _queueCache = new();
+    private readonly HashSet<Block> _visitedCache = new();
+
     public Block GetAnchorBlock()
     {
         for (int i = 0; i < blocks.Count; i++)
@@ -21,61 +21,61 @@ public class BlockGroup
         return null;
     }
 
-    /// <summary>
-    /// Sắp local position của toàn bộ block theo root group.
-    /// Nếu snapRoot=true thì root nhảy về đúng vị trí anchor.
-    /// </summary>
     public void RebuildLocalLayout(bool snapRoot = true, bool animateChildren = false, float childDuration = 0.07f)
-{
-    if (root == null || blocks == null || blocks.Count == 0)
-        return;
-
-    RectTransform rootRect = root as RectTransform;
-    if (rootRect == null)
-        return;
-
-    Block anchor = GetAnchorBlock();
-    if (anchor == null)
-        return;
-
-    Vector2 anchorBoardPos = PuzzleManager.Instance.GridToPosition(anchor.gridPos);
-
-    if (snapRoot)
-        rootRect.anchoredPosition = anchorBoardPos;
-
-    for (int i = 0; i < blocks.Count; i++)
     {
-        Block b = blocks[i];
-        if (b == null)
-            continue;
+        if (root == null || blocks.Count == 0)
+            return;
 
-        RectTransform blockRect = b.transform as RectTransform;
-        if (blockRect == null)
-            continue;
+        RectTransform rootRect = root as RectTransform;
+        if (rootRect == null)
+            return;
 
-        Vector2 blockBoardPos = PuzzleManager.Instance.GridToPosition(b.gridPos);
-        Vector2 localOffset = blockBoardPos - anchorBoardPos;
+        Block anchor = GetAnchorBlock();
+        if (anchor == null)
+            return;
 
-        blockRect.DOKill(false);
-        b.targetPosition = localOffset;
+        PuzzleManager puzzle = PuzzleManager.Instance;
+        if (puzzle == null)
+            return;
 
-        if (animateChildren)
+        Vector2 anchorBoardPos = puzzle.GridToPosition(anchor.gridPos);
+
+        if (snapRoot)
+            rootRect.anchoredPosition = anchorBoardPos;
+
+        for (int i = 0; i < blocks.Count; i++)
         {
-            blockRect.DOAnchorPos(localOffset, childDuration)
-                .SetEase(Ease.OutCubic);
-        }
-        else
-        {
-            blockRect.anchoredPosition = localOffset;
-        }
+            Block block = blocks[i];
+            if (block == null)
+                continue;
 
-        blockRect.localScale = Vector3.one;
+            RectTransform blockRect = block.transform as RectTransform;
+            if (blockRect == null)
+                continue;
+
+            Vector2 blockBoardPos = puzzle.GridToPosition(block.gridPos);
+            Vector2 localOffset = blockBoardPos - anchorBoardPos;
+
+            blockRect.DOKill(false);
+            block.targetPosition = localOffset;
+            block.MarkBorderDirty();
+
+            if (animateChildren)
+            {
+                blockRect.DOAnchorPos(localOffset, childDuration)
+                    .SetEase(Ease.OutCubic)
+                    .OnUpdate(block.MarkBorderDirty)
+                    .OnComplete(block.MarkBorderDirty);
+            }
+            else
+            {
+                blockRect.anchoredPosition = localOffset;
+            }
+
+            blockRect.localScale = Vector3.one;
+        }
     }
-}
 
-    /// <summary>
-    /// Gộp group khác vào group hiện tại.
-    /// </summary>
     public void Merge(BlockGroup other)
     {
         if (other == null || other == this || other.root == null || root == null)
@@ -83,22 +83,25 @@ public class BlockGroup
 
         root.SetAsLastSibling();
 
-        foreach (var b in other.blocks)
+        for (int i = 0; i < other.blocks.Count; i++)
         {
+            Block b = other.blocks[i];
             if (b != null && b.img != null)
                 b.img.DOKill(true);
         }
 
         other.root.DOKill(true);
 
-        foreach (var b in other.blocks)
+        for (int i = 0; i < other.blocks.Count; i++)
         {
-            if (b == null) continue;
-            if (blocks.Contains(b)) continue;
+            Block b = other.blocks[i];
+            if (b == null)
+                continue;
 
             b.group = this;
             b.transform.SetParent(root, true);
             blocks.Add(b);
+            b.MarkBorderDirty();
 
             if (b.img != null)
             {
@@ -109,6 +112,7 @@ public class BlockGroup
                 });
             }
         }
+
         RebuildLocalLayout(true);
 
         DOTween.Kill(other.root);
@@ -116,8 +120,9 @@ public class BlockGroup
         other.blocks.Clear();
         other.root = null;
 
-        foreach (var b in blocks)
+        for (int i = 0; i < blocks.Count; i++)
         {
+            Block b = blocks[i];
             if (b != null)
                 b.transform.localScale = Vector3.one;
         }
@@ -130,40 +135,35 @@ public class BlockGroup
                 if (root != null)
                     root.DOScale(1f, 0.2f).SetEase(Ease.OutQuad);
             });
+
         PuzzleManager.Instance?.RebuildGridFromBlocksStrict();
         PuzzleManager.Instance?.RefreshAllBorders(false);
     }
 
-    /// <summary>
-    /// Tách 1 số block khỏi group hiện tại để tạo group mới.
-    /// </summary>
     public void SplitByBlocks(List<Block> blocksToExtract, Transform parent, bool keepWorldVisual = true)
     {
         if (blocksToExtract == null || blocksToExtract.Count == 0)
             return;
 
+        PuzzleManager puzzle = PuzzleManager.Instance;
+        if (puzzle == null)
+            return;
+
         BlockGroup newGroup = new BlockGroup();
-
-        GameObject rootObj = new GameObject("SplitGroup", typeof(RectTransform));
-        RectTransform rootRect = rootObj.GetComponent<RectTransform>();
-        rootRect.SetParent(parent, false);
-        rootRect.anchorMin = new Vector2(0.5f, 0.5f);
-        rootRect.anchorMax = new Vector2(0.5f, 0.5f);
-        rootRect.pivot = new Vector2(0.5f, 0.5f);
-        rootRect.sizeDelta = Vector2.zero;
-        rootRect.localScale = Vector3.one;
-        rootRect.anchoredPosition = Vector2.zero;
-
+        RectTransform rootRect = puzzle.CreateGroupRoot("SplitGroup", parent);
         newGroup.root = rootRect;
 
-        // Giữ lại vị trí world hiện tại của block đầu tiên để root mới không bị snap
         Vector3 firstWorldPos = Vector3.zero;
         bool hasFirstWorldPos = false;
 
-        for (int i = 0; i < blocksToExtract.Count; i++)
+        for (int i = blocksToExtract.Count - 1; i >= 0; i--)
         {
             Block b = blocksToExtract[i];
-            if (b == null || !blocks.Contains(b))
+            if (b == null)
+                continue;
+
+            int index = blocks.IndexOf(b);
+            if (index < 0)
                 continue;
 
             if (!hasFirstWorldPos)
@@ -173,66 +173,74 @@ public class BlockGroup
             }
 
             b.group = newGroup;
-            b.transform.SetParent(newGroup.root, true); // giữ world position
+            b.transform.SetParent(newGroup.root, true);
+            b.MarkBorderDirty();
             newGroup.blocks.Add(b);
-            blocks.Remove(b);
+            blocks.RemoveAt(index);
         }
 
         if (newGroup.blocks.Count == 0)
         {
-            GameObject.Destroy(rootObj);
+            GameObject.Destroy(rootRect.gameObject);
             return;
         }
 
         if (keepWorldVisual && hasFirstWorldPos)
         {
             rootRect.position = firstWorldPos;
-            newGroup.RebuildLocalLayout(false, false); // KHÔNG snap root
+            newGroup.RebuildLocalLayout(false, false);
         }
         else
         {
             newGroup.RebuildLocalLayout(true, false);
         }
+
         RebuildLocalLayout(true, false);
+
         if (blocks.Count == 0 && root != null)
         {
             GameObject.Destroy(root.gameObject);
             root = null;
         }
-        PuzzleManager.Instance?.RebuildGridFromBlocksStrict();
-        PuzzleManager.Instance?.RefreshAllBorders(false);
+
+        puzzle.RebuildGridFromBlocksStrict();
+        puzzle.RefreshAllBorders(false);
     }
 
-    /// <summary>
-    /// Tìm các subgroup còn kết nối đúng trong group bằng BFS.
-    /// </summary>
     public List<List<Block>> GetConnectedSubgroups()
     {
-        List<List<Block>> result = new List<List<Block>>();
-        HashSet<Block> visited = new HashSet<Block>();
+        List<List<Block>> result = new();
+        PuzzleManager puzzle = PuzzleManager.Instance;
+        if (puzzle == null)
+            return result;
 
-        foreach (var start in blocks)
+        _visitedCache.Clear();
+        _queueCache.Clear();
+
+        for (int i = 0; i < blocks.Count; i++)
         {
-            if (start == null || visited.Contains(start))
+            Block start = blocks[i];
+            if (start == null || _visitedCache.Contains(start))
                 continue;
 
-            List<Block> subgroup = new List<Block>();
-            Queue<Block> q = new Queue<Block>();
-            q.Enqueue(start);
-            visited.Add(start);
+            List<Block> subgroup = new();
+            _queueCache.Enqueue(start);
+            _visitedCache.Add(start);
 
-            while (q.Count > 0)
+            while (_queueCache.Count > 0)
             {
-                Block current = q.Dequeue();
+                Block current = _queueCache.Dequeue();
                 subgroup.Add(current);
 
-                foreach (var neighbor in PuzzleManager.Instance.GetCorrectNeighborsInSameGroup(current, this))
+                List<Block> neighbors = puzzle.GetCorrectNeighborsInSameGroup(current, this);
+                for (int n = 0; n < neighbors.Count; n++)
                 {
-                    if (neighbor == null || visited.Contains(neighbor))
+                    Block neighbor = neighbors[n];
+                    if (neighbor == null || _visitedCache.Contains(neighbor))
                         continue;
 
-                    visited.Add(neighbor);
-                    q.Enqueue(neighbor);
+                    _visitedCache.Add(neighbor);
+                    _queueCache.Enqueue(neighbor);
                 }
             }
 
@@ -242,12 +250,13 @@ public class BlockGroup
         return result;
     }
 
-    /// <summary>
-    /// Nếu group bị đứt kết nối thì tách thành nhiều group nhỏ.
-    /// </summary>
     public void SplitIfDisconnected(Transform parent)
     {
-        var subgroups = GetConnectedSubgroups();
+        PuzzleManager puzzle = PuzzleManager.Instance;
+        if (puzzle == null)
+            return;
+
+        List<List<Block>> subgroups = GetConnectedSubgroups();
         if (subgroups.Count <= 1)
             return;
 
@@ -256,37 +265,32 @@ public class BlockGroup
 
         blocks.Clear();
 
-        foreach (var sub in subgroups)
+        for (int i = 0; i < subgroups.Count; i++)
         {
+            List<Block> sub = subgroups[i];
             BlockGroup newGroup = new BlockGroup();
-
-            GameObject rootObj = new GameObject("AutoSplitGroup", typeof(RectTransform));
-            RectTransform rootRect = rootObj.GetComponent<RectTransform>();
-            rootRect.SetParent(parent, false);
-            rootRect.anchorMin = new Vector2(0.5f, 0.5f);
-            rootRect.anchorMax = new Vector2(0.5f, 0.5f);
-            rootRect.pivot = new Vector2(0.5f, 0.5f);
-            rootRect.sizeDelta = Vector2.zero;
-            rootRect.localScale = Vector3.one;
-            rootRect.anchoredPosition = Vector2.zero;
-
+            RectTransform rootRect = puzzle.CreateGroupRoot("AutoSplitGroup", parent);
             newGroup.root = rootRect;
 
-            foreach (var b in sub)
+            for (int j = 0; j < sub.Count; j++)
             {
-                if (b == null) continue;
+                Block b = sub[j];
+                if (b == null)
+                    continue;
 
                 b.group = newGroup;
                 b.transform.SetParent(newGroup.root, true);
+                b.MarkBorderDirty();
                 newGroup.blocks.Add(b);
             }
+
             newGroup.RebuildLocalLayout(true);
         }
 
         if (root != null)
             GameObject.Destroy(root.gameObject);
-        PuzzleManager.Instance?.RebuildGridFromBlocksStrict();
-        PuzzleManager.Instance?.RefreshAllBorders(false);
-    }
 
+        puzzle.RebuildGridFromBlocksStrict();
+        puzzle.RefreshAllBorders(false);
+    }
 }
