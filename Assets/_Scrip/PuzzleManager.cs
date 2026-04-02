@@ -72,9 +72,38 @@ public class PuzzleManager : MonoBehaviour
     private void Start()
     {
         Application.targetFrameRate = 60;
+
+        GameSaveData save = SaveManager.Load();
+
+        if (levels == null || levels.Count == 0)
+        {
+            Debug.LogWarning("PuzzleManager: levels is empty.");
+            return;
+        }
+
+        int savedLevelIndex = Mathf.Clamp(save.currentLevelIndex, 0, levels.Count - 1);
+        currentLevelIndex = savedLevelIndex;
+
+        PuzzleLevel level = levels[currentLevelIndex];
+        sourceImage = level.levelImage;
+        rows = level.rows;
+        cols = level.cols;
+
         CacheSourceImageData();
         GeneratePuzzle();
-        ShuffleBlocks();
+
+        if (save.currentSession != null &&
+            save.currentSession.levelIndex == currentLevelIndex &&
+            save.currentSession.blocks != null &&
+            save.currentSession.blocks.Count > 0)
+        {
+            ApplySessionData(save.currentSession);
+        }
+        else
+        {
+            ShuffleBlocks();
+            SaveCurrentState();
+        }
     }
 
     private void CacheSourceImageData()
@@ -220,11 +249,13 @@ public class PuzzleManager : MonoBehaviour
             DOVirtual.DelayedCall(0.5f, () =>
             {
                 FinalizeBoardState(false);
+                SaveCurrentState();
             });
         }
         else
         {
             FinalizeBoardState(true);
+            SaveCurrentState();
         }
 
         return true;
@@ -833,5 +864,83 @@ public class PuzzleManager : MonoBehaviour
             return false;
 
         return IsCorrectNeighbor(a, b);
+    }
+    //save game
+    public GameSaveData BuildSaveData()
+    {
+        GameSaveData save = new GameSaveData();
+        save.currentLevelIndex = currentLevelIndex;
+
+        save.currentSession = new LevelSessionSaveData();
+        save.currentSession.levelIndex = currentLevelIndex;
+        save.currentSession.blocks = new List<BlockSaveData>();
+
+        for (int i = 0; i < currentBlocks.Count; i++)
+        {
+            Block block = currentBlocks[i];
+            if (block == null)
+                continue;
+
+            BlockSaveData blockSave = new BlockSaveData
+            {
+                correctRow = block.correctPos.x,
+                correctCol = block.correctPos.y,
+                gridRow = block.gridPos.x,
+                gridCol = block.gridPos.y
+            };
+
+            save.currentSession.blocks.Add(blockSave);
+        }
+
+        return save;
+    }
+
+    public void SaveCurrentState()
+    {
+        GameSaveData save = BuildSaveData();
+        SaveManager.Save(save);
+    }
+
+    public void ApplySessionData(LevelSessionSaveData session)
+    {
+        if (session == null || session.blocks == null || session.blocks.Count == 0)
+            return;
+
+        for (int i = 0; i < session.blocks.Count; i++)
+        {
+            BlockSaveData blockSave = session.blocks[i];
+
+            for (int j = 0; j < currentBlocks.Count; j++)
+            {
+                Block block = currentBlocks[j];
+                if (block == null)
+                    continue;
+
+                if (block.correctPos.x == blockSave.correctRow &&
+                    block.correctPos.y == blockSave.correctCol)
+                {
+                    block.gridPos = new Vector2Int(blockSave.gridRow, blockSave.gridCol);
+                    break;
+                }
+            }
+        }
+
+        RebuildGridFromBlocksStrict();
+        SplitDisconnectedGroups();
+        CheckAndMergeGroups();
+        RebuildGridFromBlocksStrict();
+        UpdateAllBlockPositions(false);
+        RefreshAllBorders(true);
+    }
+
+    private void OnApplicationPause(bool pause)
+    {
+        if (pause)
+            SaveCurrentState();
+    }
+
+    private void OnApplicationQuit()
+    {
+        SaveCurrentState();
     }
 }

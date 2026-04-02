@@ -54,12 +54,18 @@ public class InputSystem : MonoBehaviour
         }
         // 5. ĐƯA VỀ VỊ TRÍ ĐÚNG
         targetBlock.gridPos = destination;
+        PuzzleManager.Instance.RebuildGridFromBlocksStrict();
         PuzzleManager.Instance.UpdateAllBlockPositions();
         PuzzleManager.Instance.CheckAndMergeGroups();
+        PuzzleManager.Instance.RebuildGridFromBlocksStrict();
+        PuzzleManager.Instance.RefreshAllBorders(true);
+        PuzzleManager.Instance.SaveCurrentState();
+
         targetBlock.img.DOColor(Color.green, 0.3f).OnComplete(() =>
         {
             targetBlock.img.DOColor(Color.white, 0.5f);
         });
+
         return true;
     }
 }
