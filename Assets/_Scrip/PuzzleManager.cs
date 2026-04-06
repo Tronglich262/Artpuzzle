@@ -17,6 +17,8 @@ public class PuzzleManager : MonoBehaviour
     [SerializeField] private RectTransform boardRoot;
 
     public bool isTweening { get; private set; }
+    private bool levelCompleted = false;
+
     public void SetTweening(bool state) => isTweening = state;
 
     [HideInInspector] public readonly List<Block> currentBlocks = new();
@@ -196,10 +198,10 @@ public class PuzzleManager : MonoBehaviour
     }
 
     public bool MoveGroupWithPush(
-        BlockGroup draggedGroup,
-        Vector2Int offset,
-        BlockDragHandler.DragMoveType moveType,
-        bool animate = true)
+     BlockGroup draggedGroup,
+     Vector2Int offset,
+     BlockDragHandler.DragMoveType moveType,
+     bool animate = true)
     {
         if (draggedGroup == null || draggedGroup.blocks == null || draggedGroup.blocks.Count == 0)
             return false;
@@ -246,16 +248,22 @@ public class PuzzleManager : MonoBehaviour
 
         if (animate)
         {
-            DOVirtual.DelayedCall(0.5f, () =>
+            DOVirtual.DelayedCall(0.52f, () =>
             {
+                RebuildGridFromBlocksStrict();
                 FinalizeBoardState(false);
+                RebuildGridFromBlocksStrict();
                 SaveCurrentState();
+                CheckLevelCompleteAndShow();
             });
         }
         else
         {
+            RebuildGridFromBlocksStrict();
             FinalizeBoardState(true);
+            RebuildGridFromBlocksStrict();
             SaveCurrentState();
+            CheckLevelCompleteAndShow();
         }
 
         return true;
@@ -778,26 +786,60 @@ public class PuzzleManager : MonoBehaviour
 
     private void SortDraggedAndHitLayers(BlockGroup draggedGroup, List<Block> hitBlocks)
     {
-        if (draggedGroup == null || draggedGroup.root == null)
+        if (boardRoot == null || draggedGroup == null || draggedGroup.root == null)
             return;
 
-        draggedGroup.root.SetAsLastSibling();
+        CollectUniqueGroups(_groupsCache);
 
-        int currentIndex = draggedGroup.root.GetSiblingIndex() - 1;
-        _sortedGroupsCache.Clear();
+        List<BlockGroup> hitGroups = new List<BlockGroup>();
+        HashSet<BlockGroup> hitSet = new HashSet<BlockGroup>();
 
+        // Lấy danh sách group bị hit / swap
         for (int i = 0; i < hitBlocks.Count; i++)
         {
             Block hit = hitBlocks[i];
             if (hit == null || hit.group == null || hit.group.root == null)
                 continue;
 
-            if (!_sortedGroupsCache.Add(hit.group))
+            if (hit.group == draggedGroup)
                 continue;
 
-            hit.group.root.SetSiblingIndex(Mathf.Max(0, currentIndex));
-            currentIndex--;
+            if (hitSet.Add(hit.group))
+                hitGroups.Add(hit.group);
         }
+
+        int siblingIndex = 0;
+
+        // 1. Các group thường nằm dưới cùng
+        for (int i = 0; i < _groupsCache.Count; i++)
+        {
+            BlockGroup group = _groupsCache[i];
+            if (group == null || group.root == null)
+                continue;
+
+            if (group == draggedGroup)
+                continue;
+
+            if (hitSet.Contains(group))
+                continue;
+
+            group.root.SetSiblingIndex(siblingIndex);
+            siblingIndex++;
+        }
+
+        // 2. Các group bị swap / hit nằm trên group thường
+        for (int i = 0; i < hitGroups.Count; i++)
+        {
+            BlockGroup hitGroup = hitGroups[i];
+            if (hitGroup == null || hitGroup.root == null)
+                continue;
+
+            hitGroup.root.SetSiblingIndex(siblingIndex);
+            siblingIndex++;
+        }
+
+        // 3. Group đang click / drag luôn nằm trên cùng
+        draggedGroup.root.SetAsLastSibling();
     }
 
     public Block GetBlockAt(Vector2Int pos)
@@ -931,6 +973,8 @@ public class PuzzleManager : MonoBehaviour
         RebuildGridFromBlocksStrict();
         UpdateAllBlockPositions(false);
         RefreshAllBorders(true);
+
+        CheckLevelCompleteAndShow();
     }
 
     private void OnApplicationPause(bool pause)
@@ -941,6 +985,101 @@ public class PuzzleManager : MonoBehaviour
 
     private void OnApplicationQuit()
     {
+        SaveCurrentState();
+    }
+    //complete level
+    public bool IsLevelCompleted()
+    {
+        if (currentBlocks == null || currentBlocks.Count == 0)
+            return false;
+
+        for (int i = 0; i < currentBlocks.Count; i++)
+        {
+            Block block = currentBlocks[i];
+            if (block == null)
+                continue;
+
+            if (block.gridPos != block.correctPos)
+                return false;
+        }
+
+        return true;
+    }
+
+    public bool IsBusyAfterComplete()
+    {
+        return isTweening || levelCompleted;
+    }
+
+    public void CheckLevelCompleteAndShow()
+    {
+        Debug.Log("CheckLevelCompleteAndShow CALLED");
+
+        if (levelCompleted)
+        {
+            Debug.Log("STOP: levelCompleted already true");
+            return;
+        }
+
+        if (currentBlocks == null || currentBlocks.Count == 0)
+        {
+            Debug.Log("STOP: currentBlocks empty");
+            return;
+        }
+
+        for (int i = 0; i < currentBlocks.Count; i++)
+        {
+            Block block = currentBlocks[i];
+            if (block == null)
+                continue;
+
+            Debug.Log(block.name + " grid=" + block.gridPos + " correct=" + block.correctPos);
+
+            if (block.gridPos != block.correctPos)
+            {
+                Debug.Log("STOP: level not complete");
+                return;
+            }
+        }
+
+        Debug.Log("LEVEL COMPLETE -> PLAY UI");
+
+        levelCompleted = true;
+        isTweening = true;
+
+        if (PuzzleCompleteUI.Instance != null)
+        {
+            Debug.Log("PuzzleCompleteUI.Instance OK");
+            PuzzleCompleteUI.Instance.PlayComplete(sourceImage);
+        }
+        else
+        {
+            Debug.LogError("PuzzleCompleteUI.Instance NULL");
+            isTweening = false;
+        }
+    }
+
+    public void LoadNextLevel()
+    {
+        if (PuzzleCompleteUI.Instance != null)
+            PuzzleCompleteUI.Instance.ResetCompleteUIForNextLevel();
+
+        currentLevelIndex++;
+
+        if (currentLevelIndex >= levels.Count)
+            currentLevelIndex = 0;
+
+        levelCompleted = false;
+        isTweening = false;
+
+        PuzzleLevel level = levels[currentLevelIndex];
+        sourceImage = level.levelImage;
+        rows = level.rows;
+        cols = level.cols;
+
+        CacheSourceImageData();
+        GeneratePuzzle();
+        ShuffleBlocks();
         SaveCurrentState();
     }
 }

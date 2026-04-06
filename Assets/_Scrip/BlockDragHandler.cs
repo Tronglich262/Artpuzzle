@@ -38,7 +38,10 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         if (puzzle == null || canvasRect == null || block == null)
             return;
 
-        if (puzzle.isTweening || Time.time - lastInputTime < inputCooldown)
+        if (puzzle.IsBusyAfterComplete())
+            return;
+
+        if (Time.time - lastInputTime < inputCooldown)
             return;
 
         RectTransform rootRect = GetRootRectSafe();
@@ -120,7 +123,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             return;
         }
 
-        bool success = puzzle.MoveGroupWithPush(draggedGroup, offset, currentDragMoveType);
+        bool success = puzzle.MoveGroupWithPush(draggedGroup, offset, currentDragMoveType, true);
         if (!success)
             ResetGroup(draggedGroup);
     }
@@ -136,6 +139,7 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
             return Vector2Int.zero;
 
         Vector2 delta = rootRect.anchoredPosition - rootStartPos;
+
         if (delta.sqrMagnitude < puzzle.blockSize * puzzle.blockSize * 0.0625f)
             return Vector2Int.zero;
 
@@ -143,7 +147,8 @@ public class BlockDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler
         targetGrid.x = Mathf.Clamp(targetGrid.x, 0, puzzle.rows - 1);
         targetGrid.y = Mathf.Clamp(targetGrid.y, 0, puzzle.cols - 1);
 
-        return targetGrid - anchor.gridPos;
+        Vector2Int offset = targetGrid - anchor.gridPos;
+        return offset;
     }
 
     private DragMoveType GetMoveTypeFromDelta(Vector2 delta)
