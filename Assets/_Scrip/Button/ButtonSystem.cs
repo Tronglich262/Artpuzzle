@@ -12,12 +12,6 @@ public class ButtonSystem : MonoBehaviour
     [Header("Cài đặt game")]
     public GameObject SettingPanel;
 
-    [Header("Collection")]
-    public GameObject CollectionPanel;
-
-    [Header("DaillyPuzzle")]
-    public GameObject DaillyPanel;
-
     [Header("List Button UI")]
     public List<RectTransform> buttons;
 
@@ -110,31 +104,6 @@ public class ButtonSystem : MonoBehaviour
         SceneManager.LoadScene("GamePlay");
     }
 
-    // =========================
-    // Collection
-    // =========================
-    public void ActiveCollection()
-    {
-        ShowPopup(CollectionPanel);
-    }
-
-    public void DisCollection()
-    {
-        HidePopup(CollectionPanel);
-    }
-
-    // =========================
-    // Daily
-    // =========================
-    public void ActiveDailly()
-    {
-        ShowPopup(DaillyPanel);
-    }
-
-    public void DisDailly()
-    {
-        HidePopup(DaillyPanel);
-    }
 
     // =========================
     // sau khi bấm Remove Ads / Buy
